@@ -1,7 +1,7 @@
 /**
  * @file config/passport-setup.js
  * @description Passport.js authentication strategies setup.
- * @author Your Name
+ * @author GIDE
  */
 
 import passport from 'passport';

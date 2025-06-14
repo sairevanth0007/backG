@@ -1,7 +1,7 @@
 /**
  * @file seeders/seedPlans.js
  * @description Script to seed initial plan data into the MongoDB database.
- * @author Your Name
+ * @author GIDE
  */
 
 import mongoose from 'mongoose';

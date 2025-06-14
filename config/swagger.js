@@ -1,7 +1,7 @@
 /**
  * @file config/swagger.js
  * @description Configuration for Swagger API documentation using JSDoc comments.
- * @author Your Name
+ * @author GIDE
  */
 
 import { bridge } from '../bridge.js';

@@ -1,7 +1,7 @@
 /**
  * @file models/plan.model.js
  * @description Defines the Mongoose schema for Plans.
- * @author Your Name
+ * @author GIDE
  */
 
 import mongoose, { Schema } from 'mongoose';

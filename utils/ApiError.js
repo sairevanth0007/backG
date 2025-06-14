@@ -1,7 +1,7 @@
 /**
  * @file utils/ApiError.js
  * @description Custom Error class for API errors.
- * @author Your Name
+ * @author GIDE
  */
 
 /**

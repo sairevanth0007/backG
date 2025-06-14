@@ -1,7 +1,7 @@
 /**
  * @file routes/payment.routes.js
  * @description Payment-related API routes for Stripe integration.
- * @author Your Name
+ * @author GIDE
  */
 
 import { Router } from 'express';

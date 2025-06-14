@@ -1,7 +1,7 @@
 /**
  * @file controllers/auth.controller.js
  * @description Authentication controller for handling OAuth callbacks, logout, and user profile.
- * @author Your Name
+ * @author GIDE
  */
 
 import { asyncHandler } from '../utils/asyncHandler.js';

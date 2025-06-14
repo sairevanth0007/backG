@@ -1,7 +1,7 @@
 /**
  * @file routes/index.routes.js
  * @description Main router for API v1. Aggregates all other route modules.
- * @author Your Name
+ * @author GIDE
  */
 
 import { Router } from 'express';

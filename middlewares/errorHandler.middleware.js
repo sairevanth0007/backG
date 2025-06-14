@@ -1,7 +1,7 @@
 /**
  * @file middlewares/errorHandler.middleware.js
  * @description Global error handling middleware for Express.
- * @author Your Name
+ * @author GIDE
  */
 
 import { ApiError } from '../utils/ApiError.js';

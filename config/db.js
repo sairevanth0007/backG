@@ -1,7 +1,7 @@
 /**
  * @file config/db.js
  * @description MongoDB connection setup.
- * @author Your Name
+ * @author GIDE
  */
 
 import mongoose from 'mongoose';

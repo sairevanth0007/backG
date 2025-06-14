@@ -1,7 +1,7 @@
 /**
  * @file middlewares/auth.middleware.js
  * @description Authentication middleware to protect routes.
- * @author Your Name
+ * @author GIDE
  */
 
 import { ApiError } from '../utils/ApiError.js';

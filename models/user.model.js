@@ -1,7 +1,7 @@
 /**
  * @file models/user.model.js
  * @description Defines the Mongoose schema for Users.
- * @author Your Name
+ * @author GIDE
  */
 
 import mongoose, { Schema } from 'mongoose';

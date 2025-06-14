@@ -1,7 +1,7 @@
 /**
  * @file bridge.js
  * @description Utility to determine environment-specific configurations.
- * @author Your Name
+ * @author GIDE
  */
 
 import dotenv from 'dotenv';

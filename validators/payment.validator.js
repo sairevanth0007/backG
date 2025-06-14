@@ -1,7 +1,7 @@
 /**
  * @file validators/payment.validator.js
  * @description Joi validation schemas for payment-related inputs.
- * @author Your Name
+ * @author GIDE
  */
 
 import Joi from 'joi';

@@ -1,7 +1,7 @@
 /**
  * @file utils/ApiResponse.js
  * @description Class for standardizing API responses.
- * @author Your Name
+ * @author GIDE
  */
 
 /**

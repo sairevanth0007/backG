@@ -1,7 +1,7 @@
 /**
  * @file models/referral.model.js
  * @description Defines the Mongoose schema for Referrals.
- * @author Your Name
+ * @author GIDE
  */
 
 import mongoose, { Schema } from 'mongoose';

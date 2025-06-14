@@ -1,7 +1,7 @@
 /**
  * @file server.js
  * @description Server startup file.
- * @author Your Name
+ * @author GIDE
  */
 
 import app from './app.js';

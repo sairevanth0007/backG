@@ -1,7 +1,7 @@
 /**
  * @file routes/auth.routes.js
  * @description Authentication routes for OAuth login, logout, and user profile.
- * @author Your Name
+ * @author GIDE
  */
 
 import { Router } from 'express';

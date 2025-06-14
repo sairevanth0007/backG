@@ -1,7 +1,7 @@
 /**
  * @file app.js
  * @description Main application file for the Express server.
- * @author Your Name
+ * @author GIDE
  */
 
 import express from 'express';

@@ -1,7 +1,7 @@
 /**
  * @file middlewares/rateLimiter.middleware.js
  * @description Rate limiting middleware using express-rate-limit.
- * @author Your Name
+ * @author GIDE
  */
 
 import rateLimit from 'express-rate-limit';

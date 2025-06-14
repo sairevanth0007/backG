@@ -1,7 +1,7 @@
 /**
  * @file controllers/payment.controller.js
  * @description Controller for Stripe payment operations and webhook handling.
- * @author Your Name
+ * @author GIDE
  */
 
 import { asyncHandler } from '../utils/asyncHandler.js';

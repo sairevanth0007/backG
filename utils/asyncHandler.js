@@ -1,7 +1,7 @@
 /**
  * @file utils/asyncHandler.js
  * @description Utility to handle asynchronous route handlers and catch errors.
- * @author Your Name
+ * @author GIDE
  */
 
 /**

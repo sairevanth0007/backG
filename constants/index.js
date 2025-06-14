@@ -1,7 +1,7 @@
 /**
  * @file constants/index.js
  * @description Application-wide constants.
- * @author Your Name
+ * @author GIDE
  */
 
 /**

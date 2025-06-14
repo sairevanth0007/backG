@@ -1,7 +1,7 @@
 /**
  * @file config/stripe.js
  * @description Stripe API initialization and constants for plan price IDs.
- * @author Your Name
+ * @author GIDE
  */
 
 import Stripe from 'stripe';

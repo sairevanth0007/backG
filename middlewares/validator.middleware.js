@@ -1,7 +1,7 @@
 /**
  * @file middlewares/validator.middleware.js
  * @description Joi validation middleware.
- * @author Your Name
+ * @author GIDE
  */
 
 import Joi from 'joi';
