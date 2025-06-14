@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: models/referral.model.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: models/referral.model.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>/**
+ * @file models/referral.model.js
+ * @description Defines the Mongoose schema for Referrals.
+ * @author Your Name
+ */
+
+import mongoose, { Schema } from 'mongoose';
+import crypto from 'crypto'; // For generating referral codes
+
+/**
+ * @typedef {object} Referral
+ * @property {mongoose.Schema.Types.ObjectId} userId - The user to whom this referral code belongs.
+ * @property {string} referralCode - The unique referral code.
+ * @property {number} numberOfReferrals - The count of users who have successfully used this referral code.
+ * @property {Date} createdAt - Timestamp of when the referral entry was created.
+ * @property {Date} updatedAt - Timestamp of when the referral entry was last updated.
+ */
+const referralSchema = new Schema(
+    {
+        userId: {
+            type: Schema.Types.ObjectId,
+            ref: 'User',
+            required: true,
+            unique: true, // Each user has one referral entity/code
+        },
+        referralCode: {
+            type: String,
+            unique: true,
+            required: true,
+            uppercase: true,
+            trim: true,
+        },
+        numberOfReferrals: {
+            type: Number,
+            default: 0,
+            min: 0,
+        },
+        // You could add more fields here, like rewards history, etc.
+    },
+    { timestamps: true }
+);
+
+/**
+ * @static
+ * @function generateReferralCode
+ * @memberof Referral
+ * @description Generates a unique referral code.
+ * Combines parts of user's name (if available) or a random string with some random characters.
+ * Ensures uniqueness by checking against existing codes (though true uniqueness check should be at DB level with retries if needed).
+ *
+ * @param {string} [usernamePart="REF"] - A string part, usually derived from username, to make code somewhat recognizable.
+ * @returns {string} A generated referral code.
+ */
+referralSchema.statics.generateReferralCode = function (usernamePart = "REF") {
+    const namePrefix = usernamePart.substring(0, 5).toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const randomSuffix = crypto.randomBytes(3).toString('hex').toUpperCase();
+    return `${namePrefix}${randomSuffix}`;
+};
+
+
+export const Referral = mongoose.model('Referral', referralSchema);</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Namespaces</h3><ul><li><a href="bridge.html">bridge</a></li></ul><h3>Classes</h3><ul><li><a href="ApiError.html">ApiError</a></li><li><a href="ApiResponse.html">ApiResponse</a></li></ul><h3>Global</h3><ul><li><a href="global.html#AppMessages">AppMessages</a></li><li><a href="global.html#BASE_URL">BASE_URL</a></li><li><a href="global.html#DB_NAME">DB_NAME</a></li><li><a href="global.html#FRONTEND_URL">FRONTEND_URL</a></li><li><a href="global.html#HttpStatusCode">HttpStatusCode</a></li><li><a href="global.html#OAuthProviders">OAuthProviders</a></li><li><a href="global.html#PlanTypes">PlanTypes</a></li><li><a href="global.html#STRIPE_PLAN_PRICE_IDS">STRIPE_PLAN_PRICE_IDS</a></li><li><a href="global.html#STRIPE_WEBHOOK_SECRET">STRIPE_WEBHOOK_SECRET</a></li><li><a href="global.html#UserRoles">UserRoles</a></li><li><a href="global.html#asyncHandler">asyncHandler</a></li><li><a href="global.html#connectDB">connectDB</a></li><li><a href="global.html#createCheckoutSession">createCheckoutSession</a></li><li><a href="global.html#createRateLimiter">createRateLimiter</a></li><li><a href="global.html#errorHandler">errorHandler</a></li><li><a href="global.html#getCurrentUser">getCurrentUser</a></li><li><a href="global.html#handleOAuthFailure">handleOAuthFailure</a></li><li><a href="global.html#handleOAuthSuccess">handleOAuthSuccess</a></li><li><a href="global.html#handleStripeWebhook">handleStripeWebhook</a></li><li><a href="global.html#isAuthenticated">isAuthenticated</a></li><li><a href="global.html#logoutUser">logoutUser</a></li><li><a href="global.html#manageSubscriptionPortal">manageSubscriptionPortal</a></li><li><a href="global.html#rateLimiter">rateLimiter</a></li><li><a href="global.html#stripe">stripe</a></li><li><a href="global.html#upgradeToYearly">upgradeToYearly</a></li><li><a href="global.html#validate">validate</a></li><li><a href="global.html#validatePlanIdSchema">validatePlanIdSchema</a></li><li><a href="global.html#validateReferralCodeSchema">validateReferralCodeSchema</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 4.0.4</a> on Sat May 31 2025 22:19:47 GMT+0200 (Central European Summer Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

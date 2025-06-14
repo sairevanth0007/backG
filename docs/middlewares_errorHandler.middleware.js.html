@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: middlewares/errorHandler.middleware.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: middlewares/errorHandler.middleware.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>/**
+ * @file middlewares/errorHandler.middleware.js
+ * @description Global error handling middleware for Express.
+ * @author Your Name
+ */
+
+import { ApiError } from '../utils/ApiError.js';
+import { HttpStatusCode } from '../constants/index.js';
+import { bridge } from '../bridge.js';
+
+/**
+ * @function errorHandler
+ * @description Express error handling middleware.
+ * It catches errors passed by `next(err)` and sends a standardized JSON response.
+ *
+ * @param {Error|ApiError} err - The error object.
+ * @param {Express.Request} req - Express request object.
+ * @param {Express.Response} res - Express response object.
+ * @param {Express.NextFunction} next - Express next middleware function.
+ */
+const errorHandler = (err, req, res, next) => {
+    let statusCode = err.statusCode || HttpStatusCode.INTERNAL_SERVER_ERROR;
+    let message = err.message || 'Internal Server Error';
+    let errors = err.errors || [];
+
+    // Handle specific Mongoose errors (optional, but good for user feedback)
+    if (err.name === 'CastError') {
+        statusCode = HttpStatusCode.BAD_REQUEST;
+        message = `Invalid ${err.path}: ${err.value}.`;
+        errors = [{ field: err.path, message }];
+    } else if (err.name === 'ValidationError') {
+        statusCode = HttpStatusCode.UNPROCESSABLE_ENTITY;
+        const validationErrors = Object.values(err.errors).map(e => ({ field: e.path, message: e.message }));
+        message = 'Validation failed.';
+        errors = validationErrors;
+    } else if (err.code === 11000) { // Mongoose duplicate key error
+        statusCode = HttpStatusCode.CONFLICT;
+        // Extract field name from error message (this can be brittle, adjust if needed)
+        const field = Object.keys(err.keyValue)[0];
+        message = `Duplicate field value entered for: ${field}. Please use another value.`;
+        errors = [{ field, message }];
+    }
+
+    // If not an ApiError instance, and in development, log the full error
+    if (!(err instanceof ApiError) &amp;&amp; bridge.isDevelopment) {
+        console.error("Server Error:", err);
+    }
+    
+    // For production, don't send stack trace or overly detailed errors unless intended
+    const response = {
+        success: false,
+        message,
+        errors: errors.length ? errors : undefined, // Only include errors array if it has content
+        ...(bridge.isDevelopment &amp;&amp; { stack: err.stack }) // Include stack in development
+    };
+
+    res.status(statusCode).json(response);
+};
+
+export { errorHandler };</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Namespaces</h3><ul><li><a href="bridge.html">bridge</a></li></ul><h3>Classes</h3><ul><li><a href="ApiError.html">ApiError</a></li><li><a href="ApiResponse.html">ApiResponse</a></li></ul><h3>Global</h3><ul><li><a href="global.html#AppMessages">AppMessages</a></li><li><a href="global.html#BASE_URL">BASE_URL</a></li><li><a href="global.html#DB_NAME">DB_NAME</a></li><li><a href="global.html#FRONTEND_URL">FRONTEND_URL</a></li><li><a href="global.html#HttpStatusCode">HttpStatusCode</a></li><li><a href="global.html#OAuthProviders">OAuthProviders</a></li><li><a href="global.html#PlanTypes">PlanTypes</a></li><li><a href="global.html#STRIPE_PLAN_PRICE_IDS">STRIPE_PLAN_PRICE_IDS</a></li><li><a href="global.html#STRIPE_WEBHOOK_SECRET">STRIPE_WEBHOOK_SECRET</a></li><li><a href="global.html#UserRoles">UserRoles</a></li><li><a href="global.html#asyncHandler">asyncHandler</a></li><li><a href="global.html#connectDB">connectDB</a></li><li><a href="global.html#createCheckoutSession">createCheckoutSession</a></li><li><a href="global.html#createRateLimiter">createRateLimiter</a></li><li><a href="global.html#errorHandler">errorHandler</a></li><li><a href="global.html#getCurrentUser">getCurrentUser</a></li><li><a href="global.html#handleOAuthFailure">handleOAuthFailure</a></li><li><a href="global.html#handleOAuthSuccess">handleOAuthSuccess</a></li><li><a href="global.html#handleStripeWebhook">handleStripeWebhook</a></li><li><a href="global.html#isAuthenticated">isAuthenticated</a></li><li><a href="global.html#logoutUser">logoutUser</a></li><li><a href="global.html#manageSubscriptionPortal">manageSubscriptionPortal</a></li><li><a href="global.html#rateLimiter">rateLimiter</a></li><li><a href="global.html#stripe">stripe</a></li><li><a href="global.html#upgradeToYearly">upgradeToYearly</a></li><li><a href="global.html#validate">validate</a></li><li><a href="global.html#validatePlanIdSchema">validatePlanIdSchema</a></li><li><a href="global.html#validateReferralCodeSchema">validateReferralCodeSchema</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 4.0.4</a> on Sat May 31 2025 22:19:47 GMT+0200 (Central European Summer Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

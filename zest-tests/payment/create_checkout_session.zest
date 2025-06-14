@@ -1,0 +1,36 @@
+// Description: Creates a Stripe Checkout session for a monthly plan.
+// Requires an active session cookie from a logged-in user.
+{
+  "title": "Create Checkout Session - Monthly Plan",
+  "baseUrl": "http://localhost:8000",
+  "requests": [
+    {
+      "method": "POST",
+      "url": "/api/v1/payment/create-checkout-session",
+      "description": "Generates a Stripe Checkout URL for a monthly plan subscription.",
+      "headers": {
+        "Content-Type": "application/json"
+      },
+      "data": "{\"planId\": \"YOUR_MONTHLY_PLAN_MONGODB_ID\"}", // Replace with an actual MongoDB Plan _id
+      "assert": [
+        {
+          "json": "$.success",
+          "comparator": "==",
+          "value": true
+        },
+        {
+          "json": "$.data.sessionId",
+          "comparator": "exists"
+        },
+        {
+          "json": "$.data.url",
+          "comparator": "exists"
+        }
+      ],
+      "extract": {
+        "checkoutSessionUrl": "$.data.url"
+      }
+    }
+  ],
+  "variables": {}
+}

@@ -1,0 +1,28 @@
+// Description: Logs out the current user. Requires an active session cookie.
+{
+  "title": "Logout User",
+  "baseUrl": "http://localhost:8000",
+  "requests": [
+    {
+      "method": "POST",
+      "url": "/api/v1/auth/logout",
+      "description": "Logs out the authenticated user by destroying the session.",
+      "headers": {
+        "Content-Type": "application/json"
+      },
+      "assert": [
+        {
+          "json": "$.success",
+          "comparator": "=="
+        },
+        {
+          "json": "$.message",
+          "comparator": "==",
+          "value": "Logout successful."
+        }
+      ],
+      "extract": {}
+    }
+  ],
+  "variables": {}
+}

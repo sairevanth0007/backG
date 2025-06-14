@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: middlewares/validator.middleware.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: middlewares/validator.middleware.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>/**
+ * @file middlewares/validator.middleware.js
+ * @description Joi validation middleware.
+ * @author Your Name
+ */
+
+import Joi from 'joi';
+import { ApiError } from '../utils/ApiError.js';
+import { HttpStatusCode } from '../constants/index.js';
+
+/**
+ * @function validate
+ * @description Middleware to validate request data (body, query, params) against a Joi schema.
+ *
+ * @param {Joi.Schema} schema - The Joi schema to validate against.
+ * @param {('body'|'query'|'params')} [dataSource='body'] - The part of the request object to validate.
+ * @returns {Function} Express middleware function.
+ *
+ * @example
+ * // In your route:
+ * // import { validate } from '../middlewares/validator.middleware.js';
+ * // import { someSchema } from '../validators/some.validator.js';
+ * // router.post('/some-endpoint', validate(someSchema), someController.handler);
+ * // router.get('/another-endpoint', validate(anotherSchema, 'query'), anotherController.handler);
+ */
+export const validate = (schema, dataSource = 'body') => {
+    return (req, res, next) => {
+        const dataToValidate = req[dataSource];
+
+        const { error, value } = schema.validate(dataToValidate, {
+            abortEarly: false, // Return all errors, not just the first
+            stripUnknown: true, // Remove unknown keys from the validated data
+        });
+
+        if (error) {
+            const errorMessages = error.details.map((detail) => ({
+                field: detail.path.join('.'),
+                message: detail.message.replace(/['"]/g, ''), // Clean up quotes from Joi messages
+            }));
+            return next(new ApiError(HttpStatusCode.UNPROCESSABLE_ENTITY, 'Validation Error', errorMessages));
+        }
+
+        // Attach validated data to the request object (e.g., req.validatedBody)
+        // This ensures that controllers use the sanitized and validated data.
+        req[`validated${dataSource.charAt(0).toUpperCase() + dataSource.slice(1)}`] = value;
+        // Or simply overwrite req[dataSource] if preferred, but explicit is often clearer.
+        // req[dataSource] = value;
+
+        next();
+    };
+};</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Namespaces</h3><ul><li><a href="bridge.html">bridge</a></li></ul><h3>Classes</h3><ul><li><a href="ApiError.html">ApiError</a></li><li><a href="ApiResponse.html">ApiResponse</a></li></ul><h3>Global</h3><ul><li><a href="global.html#AppMessages">AppMessages</a></li><li><a href="global.html#BASE_URL">BASE_URL</a></li><li><a href="global.html#DB_NAME">DB_NAME</a></li><li><a href="global.html#FRONTEND_URL">FRONTEND_URL</a></li><li><a href="global.html#HttpStatusCode">HttpStatusCode</a></li><li><a href="global.html#OAuthProviders">OAuthProviders</a></li><li><a href="global.html#PlanTypes">PlanTypes</a></li><li><a href="global.html#STRIPE_PLAN_PRICE_IDS">STRIPE_PLAN_PRICE_IDS</a></li><li><a href="global.html#STRIPE_WEBHOOK_SECRET">STRIPE_WEBHOOK_SECRET</a></li><li><a href="global.html#UserRoles">UserRoles</a></li><li><a href="global.html#asyncHandler">asyncHandler</a></li><li><a href="global.html#connectDB">connectDB</a></li><li><a href="global.html#createCheckoutSession">createCheckoutSession</a></li><li><a href="global.html#createRateLimiter">createRateLimiter</a></li><li><a href="global.html#errorHandler">errorHandler</a></li><li><a href="global.html#getCurrentUser">getCurrentUser</a></li><li><a href="global.html#handleOAuthFailure">handleOAuthFailure</a></li><li><a href="global.html#handleOAuthSuccess">handleOAuthSuccess</a></li><li><a href="global.html#handleStripeWebhook">handleStripeWebhook</a></li><li><a href="global.html#isAuthenticated">isAuthenticated</a></li><li><a href="global.html#logoutUser">logoutUser</a></li><li><a href="global.html#manageSubscriptionPortal">manageSubscriptionPortal</a></li><li><a href="global.html#rateLimiter">rateLimiter</a></li><li><a href="global.html#stripe">stripe</a></li><li><a href="global.html#upgradeToYearly">upgradeToYearly</a></li><li><a href="global.html#validate">validate</a></li><li><a href="global.html#validatePlanIdSchema">validatePlanIdSchema</a></li><li><a href="global.html#validateReferralCodeSchema">validateReferralCodeSchema</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 4.0.4</a> on Sat May 31 2025 22:19:47 GMT+0200 (Central European Summer Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

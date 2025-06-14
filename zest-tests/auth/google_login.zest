@@ -1,0 +1,19 @@
+// Description: Initiates Google OAuth login flow.
+// This Zest file primarily acts as a documentation/shortcut for the OAuth flow.
+// The actual login involves browser redirects and cannot be fully automated by Zest alone.
+// You would manually click the OAuth link to trigger the flow and capture the session cookie.
+// After successful OAuth, you can use the 'get_profile.zest' to verify login.
+{
+  "title": "Google Login (Initiation)",
+  "baseUrl": "http://localhost:8000",
+  "requests": [
+    {
+      "method": "GET",
+      "url": "/api/v1/auth/google",
+      "description": "Initiate Google OAuth. You will be redirected to Google. After successful login, you'll be redirected to your frontend.",
+      "assert": [],
+      "extract": {}
+    }
+  ],
+  "variables": {}
+}

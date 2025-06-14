@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: controllers/auth.controller.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: controllers/auth.controller.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>/**
+ * @file controllers/auth.controller.js
+ * @description Authentication controller for handling OAuth callbacks, logout, and user profile.
+ * @author Your Name
+ */
+
+import { asyncHandler } from '../utils/asyncHandler.js';
+import { ApiResponse } from '../utils/ApiResponse.js';
+import { ApiError } from '../utils/ApiError.js';
+import { HttpStatusCode, AppMessages, PlanTypes } from '../constants/index.js';
+import { bridge } from '../bridge.js';
+import { Referral } from '../models/referral.model.js'; // Ensure Referral model is imported if needed for getCurrentUser
+
+/**
+ * @async
+ * @function handleOAuthSuccess
+ * @description Handles successful OAuth authentication. Redirects user to the frontend dashboard.
+ * The actual user creation/login is handled by the Passport strategy.
+ * This controller function is called *after* Passport successfully authenticates
+ * and establishes a session.
+ * @param {Express.Request} req - Express request object.
+ * @param {Express.Response} res - Express response object.
+ */
+const handleOAuthSuccess = asyncHandler(async (req, res) => {
+    // Passport has already authenticated the user and req.user is populated.
+    // A session is established.
+    // Redirect to the frontend.
+    const successRedirectUrl = `${bridge.FRONTEND_URL}/dashboard?login=success`; // Or any other success page
+    res.redirect(successRedirectUrl);
+});
+
+/**
+ * @async
+ * @function handleOAuthFailure
+ * @description Handles OAuth authentication failure. Redirects user to the frontend login page with an error.
+ * @param {Express.Request} req - Express request object.
+ * @param {Express.Response} res - Express response object.
+ */
+const handleOAuthFailure = asyncHandler(async (req, res) => {
+    const failureRedirectUrl = `${bridge.FRONTEND_URL}/login?status=failed&amp;message=${encodeURIComponent(req.query.message || 'OAuth login failed. Please try again.')}`;
+    res.redirect(failureRedirectUrl);
+});
+
+
+/**
+ * @async
+ * @function logoutUser
+ * @description Logs out the currently authenticated user.
+ * Destroys the session and clears the session cookie.
+ * @param {Express.Request} req - Express request object.
+ * @param {Express.Response} res - Express response object.
+ * @param {Express.NextFunction} next - Express next middleware function.
+ */
+const logoutUser = asyncHandler(async (req, res, next) => {
+    req.logout(function(err) {
+        if (err) {
+            console.error("Error during logout:", err);
+            return next(new ApiError(HttpStatusCode.INTERNAL_SERVER_ERROR, 'Logout failed.'));
+        }
+        req.session.destroy((err) => {
+            if (err) {
+                console.error("Error destroying session:", err);
+            }
+            res.clearCookie('connect.sid');
+            return res
+                .status(HttpStatusCode.OK)
+                .json(new ApiResponse(HttpStatusCode.OK, {}, AppMessages.LOGOUT_SUCCESSFUL));
+        });
+    });
+});
+
+/**
+ * @async
+ * @function getCurrentUser
+ * @description Retrieves the profile of the currently authenticated user.
+ * Populates referral code information.
+ * @param {Express.Request} req - Express request object, req.user should be populated by Passport.
+ * @param {Express.Response} res - Express response object.
+ */
+const getCurrentUser = asyncHandler(async (req, res) => {
+    if (!req.user) {
+        throw new ApiError(HttpStatusCode.UNAUTHORIZED, AppMessages.UNAUTHORIZED);
+    }
+    const { _id, email, name, avatar, provider, subscriptionStatus, subscriptionExpiresAt, currentPlanType, referredBy, referralDetails, createdAt } = req.user;
+    
+    let userReferralCode = null;
+    if (referralDetails) {
+        const referralDoc = await Referral.findById(referralDetails);
+        if (referralDoc) {
+            userReferralCode = referralDoc.referralCode;
+        }
+    }
+
+    return res.status(HttpStatusCode.OK).json(new ApiResponse(HttpStatusCode.OK, {
+        _id,
+        email,
+        name,
+        avatar,
+        provider,
+        subscriptionStatus,
+        subscriptionExpiresAt,
+        currentPlanType,
+        referredBy,
+        userReferralCode,
+        createdAt,
+        isLoggedIn: true
+    }, AppMessages.FETCHED));
+});
+
+export const authController = {
+    handleOAuthSuccess,
+    handleOAuthFailure,
+    logoutUser,
+    getCurrentUser,
+};</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Namespaces</h3><ul><li><a href="bridge.html">bridge</a></li></ul><h3>Classes</h3><ul><li><a href="ApiError.html">ApiError</a></li><li><a href="ApiResponse.html">ApiResponse</a></li></ul><h3>Global</h3><ul><li><a href="global.html#AppMessages">AppMessages</a></li><li><a href="global.html#BASE_URL">BASE_URL</a></li><li><a href="global.html#DB_NAME">DB_NAME</a></li><li><a href="global.html#FRONTEND_URL">FRONTEND_URL</a></li><li><a href="global.html#HttpStatusCode">HttpStatusCode</a></li><li><a href="global.html#OAuthProviders">OAuthProviders</a></li><li><a href="global.html#PlanTypes">PlanTypes</a></li><li><a href="global.html#STRIPE_PLAN_PRICE_IDS">STRIPE_PLAN_PRICE_IDS</a></li><li><a href="global.html#STRIPE_WEBHOOK_SECRET">STRIPE_WEBHOOK_SECRET</a></li><li><a href="global.html#UserRoles">UserRoles</a></li><li><a href="global.html#asyncHandler">asyncHandler</a></li><li><a href="global.html#connectDB">connectDB</a></li><li><a href="global.html#createCheckoutSession">createCheckoutSession</a></li><li><a href="global.html#createRateLimiter">createRateLimiter</a></li><li><a href="global.html#errorHandler">errorHandler</a></li><li><a href="global.html#getCurrentUser">getCurrentUser</a></li><li><a href="global.html#handleOAuthFailure">handleOAuthFailure</a></li><li><a href="global.html#handleOAuthSuccess">handleOAuthSuccess</a></li><li><a href="global.html#handleStripeWebhook">handleStripeWebhook</a></li><li><a href="global.html#isAuthenticated">isAuthenticated</a></li><li><a href="global.html#logoutUser">logoutUser</a></li><li><a href="global.html#manageSubscriptionPortal">manageSubscriptionPortal</a></li><li><a href="global.html#rateLimiter">rateLimiter</a></li><li><a href="global.html#stripe">stripe</a></li><li><a href="global.html#upgradeToYearly">upgradeToYearly</a></li><li><a href="global.html#validate">validate</a></li><li><a href="global.html#validatePlanIdSchema">validatePlanIdSchema</a></li><li><a href="global.html#validateReferralCodeSchema">validateReferralCodeSchema</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 4.0.4</a> on Sat May 31 2025 22:19:47 GMT+0200 (Central European Summer Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

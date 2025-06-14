@@ -1,0 +1,30 @@
+// Description: Upgrades a monthly subscription to a yearly plan.
+// Requires an active session cookie from a user with an active monthly subscription.
+{
+  "title": "Upgrade to Yearly Plan",
+  "baseUrl": "http://localhost:8000",
+  "requests": [
+    {
+      "method": "POST",
+      "url": "/api/v1/payment/upgrade-to-yearly",
+      "description": "Upgrades the authenticated user's current monthly subscription to a yearly plan.",
+      "headers": {
+        "Content-Type": "application/json"
+      },
+      "assert": [
+        {
+          "json": "$.success",
+          "comparator": "==",
+          "value": true
+        },
+        {
+          "json": "$.message",
+          "comparator": "==",
+          "value": "Subscription successfully upgraded to Yearly Plan."
+        }
+      ],
+      "extract": {}
+    }
+  ],
+  "variables": {}
+}

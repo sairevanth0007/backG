@@ -1,0 +1,40 @@
+{
+    "opts": {
+        "encoding": "utf8",
+        "destination": "./docs/",  
+        "recurse": true,           
+        "template": "node_modules/jsdoc/templates/default" 
+    },
+    "plugins": [
+        "plugins/markdown",         
+        "node_modules/jsdoc-route-plugin" 
+    ],
+    "source": {
+        "include": [
+            "./app.js",
+            "./server.js",
+            "./bridge.js",
+            "./config",
+            "./constants",
+            "./controllers",
+            "./middlewares",
+            "./models",
+            "./routes",
+            "./utils",
+            "./validators"
+        ],
+        "includePattern": "\\.js$", 
+        "excludePattern": "(node_modules|docs|seeders)" 
+    },
+    "tags": {
+        "allowUnknownTags": true,
+        "dictionaries": ["jsdoc", "closure"]
+    },
+    "templates": {
+        "cleverLinks": true,      
+        "monospaceLinks": true,    
+        "default": {
+            "outputSourceFiles": true 
+        }
+    }
+}

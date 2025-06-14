@@ -1,0 +1,41 @@
+// Description: Retrieves the profile of the currently authenticated user. Requires an active session cookie.
+{
+  "title": "Get Current User Profile",
+  "baseUrl": "http://localhost:8000",
+  "requests": [
+    {
+      "method": "GET",
+      "url": "/api/v1/auth/me",
+      "description": "Fetches details of the logged-in user.",
+      "headers": {},
+      "assert": [
+        {
+          "json": "$.success",
+          "comparator": "==",
+          "value": true
+        },
+        {
+          "json": "$.data.email",
+          "comparator": "exists"
+        },
+        {
+          "json": "$.data.name",
+          "comparator": "exists"
+        },
+        {
+          "json": "$.data.isLoggedIn",
+          "comparator": "==",
+          "value": true
+        }
+      ],
+      "extract": {
+        "userEmail": "$.data.email",
+        "userName": "$.data.name",
+        "userId": "$.data._id"
+      }
+    }
+  ],
+  "variables": {
+    // You can define variables here if needed
+  }
+}

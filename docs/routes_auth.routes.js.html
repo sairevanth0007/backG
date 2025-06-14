@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: routes/auth.routes.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: routes/auth.routes.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>/**
+ * @file routes/auth.routes.js
+ * @description Authentication routes for OAuth login, logout, and user profile.
+ * @author Your Name
+ */
+
+import { Router } from 'express';
+import passport from 'passport'; // Import configured passport from passport-setup
+import { authController } from '../controllers/auth.controller.js';
+import { isAuthenticated } from '../middlewares/auth.middleware.js';
+import { OAuthProviders } from '../constants/index.js'; 
+import { bridge } from '../bridge.js';
+
+const router = Router();
+
+// --- OAuth Initiation Routes ---
+// These routes will redirect to the respective OAuth provider.
+// We add a middleware to capture referralCode from query and store in session.
+
+const initiateOAuth = (provider, scope) => (req, res, next) => {
+    const { referralCode } = req.query;
+    if (referralCode) {
+        req.session.referralCode = referralCode.toString().trim().toUpperCase();
+    }
+    passport.authenticate(provider, { scope })(req, res, next);
+};
+
+/**
+ * @route GET /api/v1/auth/google
+ * @description Initiates Google OAuth authentication.
+ * @query {string} [referralCode] - Optional referral code.
+ * @group Auth - Authentication operations
+ * @returns {void} Redirects to Google's OAuth consent screen.
+ */
+router.get('/google', initiateOAuth(OAuthProviders.GOOGLE, ['profile', 'email']));
+
+/**
+ * @route GET /api/v1/auth/microsoft
+ * @description Initiates Microsoft OAuth authentication.
+ * @query {string} [referralCode] - Optional referral code.
+ * @group Auth - Authentication operations
+ * @returns {void} Redirects to Microsoft's OAuth consent screen.
+ */
+router.get('/microsoft', initiateOAuth(OAuthProviders.MICROSOFT, ['openid', 'profile', 'email', 'User.Read']));
+
+/**
+ * @route GET /api/v1/auth/github
+ * @description Initiates GitHub OAuth authentication.
+ * @query {string} [referralCode] - Optional referral code.
+ * @group Auth - Authentication operations
+ * @returns {void} Redirects to GitHub's OAuth consent screen.
+ */
+router.get('/github', initiateOAuth(OAuthProviders.GITHUB, ['user:email', 'read:user']));
+
+
+// --- OAuth Callback Routes ---
+// Providers will redirect back to these URLs after user grants/denies permission.
+// Passport will handle the code exchange and call the verify callback.
+
+const oauthCallbackOptions = {
+    failureRedirect: `${bridge.BASE_URL}/api/v1/auth/oauth/failure`, // Redirect to our failure handler
+    // successRedirect: Can be set, but custom handler gives more flexibility e.g. for JWTs or different redirects
+    // session: true is default and needed for session-based auth
+};
+
+/**
+ * @route GET /api/v1/auth/google/callback
+ * @description Google OAuth callback URL.
+ * @group Auth - Authentication operations
+ * @returns {void} Redirects to frontend on success or failure.
+ */
+router.get('/google/callback',
+    passport.authenticate(OAuthProviders.GOOGLE, oauthCallbackOptions),
+    authController.handleOAuthSuccess // Called on successful authentication
+);
+
+/**
+ * @route GET /api/v1/auth/microsoft/callback
+ * @description Microsoft OAuth callback URL.
+ * @group Auth - Authentication operations
+ * @returns {void} Redirects to frontend on success or failure.
+ */
+router.get('/microsoft/callback',
+    passport.authenticate(OAuthProviders.MICROSOFT, oauthCallbackOptions),
+    authController.handleOAuthSuccess
+);
+
+/**
+ * @route GET /api/v1/auth/github/callback
+ * @description GitHub OAuth callback URL.
+ * @group Auth - Authentication operations
+ * @returns {void} Redirects to frontend on success or failure.
+ */
+router.get('/github/callback',
+    passport.authenticate(OAuthProviders.GITHUB, oauthCallbackOptions),
+    authController.handleOAuthSuccess
+);
+
+// --- OAuth Failure Route ---
+/**
+ * @route GET /api/v1/auth/oauth/failure
+ * @description Generic OAuth failure handler.
+ * @group Auth - Authentication operations
+ * @returns {void} Redirects to frontend login page with an error message.
+ */
+router.get('/oauth/failure', authController.handleOAuthFailure);
+
+
+// --- Other Authentication Routes ---
+
+/**
+ * @route POST /api/v1/auth/logout
+ * @description Logs out the current user.
+ * @group Auth - Authentication operations
+ * @security BasicAuth
+ * @returns {ApiResponse.model} 200 - Logout successful
+ * @returns {ApiError.model} 500 - Logout failed
+ */
+router.post('/logout', isAuthenticated, authController.logoutUser);
+
+/**
+ * @route GET /api/v1/auth/me
+ * @description Gets the profile of the currently authenticated user.
+ * @group Auth - Authentication operations
+ * @security BasicAuth
+ * @returns {ApiResponse.model} 200 - User profile fetched successfully
+ * @returns {ApiError.model} 401 - Unauthorized
+ */
+router.get('/me', isAuthenticated, authController.getCurrentUser);
+
+export default router;</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Namespaces</h3><ul><li><a href="bridge.html">bridge</a></li></ul><h3>Classes</h3><ul><li><a href="ApiError.html">ApiError</a></li><li><a href="ApiResponse.html">ApiResponse</a></li></ul><h3>Global</h3><ul><li><a href="global.html#AppMessages">AppMessages</a></li><li><a href="global.html#BASE_URL">BASE_URL</a></li><li><a href="global.html#DB_NAME">DB_NAME</a></li><li><a href="global.html#FRONTEND_URL">FRONTEND_URL</a></li><li><a href="global.html#HttpStatusCode">HttpStatusCode</a></li><li><a href="global.html#OAuthProviders">OAuthProviders</a></li><li><a href="global.html#PlanTypes">PlanTypes</a></li><li><a href="global.html#STRIPE_PLAN_PRICE_IDS">STRIPE_PLAN_PRICE_IDS</a></li><li><a href="global.html#STRIPE_WEBHOOK_SECRET">STRIPE_WEBHOOK_SECRET</a></li><li><a href="global.html#UserRoles">UserRoles</a></li><li><a href="global.html#asyncHandler">asyncHandler</a></li><li><a href="global.html#connectDB">connectDB</a></li><li><a href="global.html#createCheckoutSession">createCheckoutSession</a></li><li><a href="global.html#createRateLimiter">createRateLimiter</a></li><li><a href="global.html#errorHandler">errorHandler</a></li><li><a href="global.html#getCurrentUser">getCurrentUser</a></li><li><a href="global.html#handleOAuthFailure">handleOAuthFailure</a></li><li><a href="global.html#handleOAuthSuccess">handleOAuthSuccess</a></li><li><a href="global.html#handleStripeWebhook">handleStripeWebhook</a></li><li><a href="global.html#isAuthenticated">isAuthenticated</a></li><li><a href="global.html#logoutUser">logoutUser</a></li><li><a href="global.html#manageSubscriptionPortal">manageSubscriptionPortal</a></li><li><a href="global.html#rateLimiter">rateLimiter</a></li><li><a href="global.html#stripe">stripe</a></li><li><a href="global.html#upgradeToYearly">upgradeToYearly</a></li><li><a href="global.html#validate">validate</a></li><li><a href="global.html#validatePlanIdSchema">validatePlanIdSchema</a></li><li><a href="global.html#validateReferralCodeSchema">validateReferralCodeSchema</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 4.0.4</a> on Sat May 31 2025 22:19:47 GMT+0200 (Central European Summer Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

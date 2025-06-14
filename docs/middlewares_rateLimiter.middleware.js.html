@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: middlewares/rateLimiter.middleware.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: middlewares/rateLimiter.middleware.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>/**
+ * @file middlewares/rateLimiter.middleware.js
+ * @description Rate limiting middleware using express-rate-limit.
+ * @author Your Name
+ */
+
+import rateLimit from 'express-rate-limit';
+import { HttpStatusCode, AppMessages } from '../constants/index.js';
+import { bridge } from '../bridge.js';
+
+// Read configuration from .env or use defaults
+const windowMs = (parseInt(process.env.DEFAULT_WINDOW_MS, 10) || 15) * 60 * 1000; // 15 minutes by default
+const maxRequests = parseInt(process.env.DEFAULT_MAX_REQUESTS, 10) || 100; // 100 requests per windowMs by default
+
+/**
+ * @constant rateLimiter
+ * @description General purpose rate limiter for all API routes.
+ * It limits each IP to `maxRequests` requests per `windowMs`.
+ *
+ * @see {@link https://www.npmjs.com/package/express-rate-limit} for more configuration options.
+ */
+export const rateLimiter = rateLimit({
+    windowMs: windowMs,
+    max: maxRequests,
+    standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+    legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+    message: (req, res) => {
+        // Custom message function to ensure JSON response
+        // This function is called when the limit is exceeded.
+        // Directly sending response here to bypass default HTML.
+        // However, the standard way is to let it throw an error
+        // and handle it in a custom handler if more control is needed.
+        // For simplicity, a direct JSON response is used.
+        return res.status(HttpStatusCode.TOO_MANY_REQUESTS).json({
+            success: false,
+            message: AppMessages.ERROR_DEFAULT, // Or a more specific "Too many requests" message
+            errors: [
+                {
+                    message: `Too many requests created from this IP, please try again after ${windowMs / 60000} minutes.`,
+                },
+            ],
+        });
+    },
+    handler: (req, res, next, options) => {
+        // This handler is invoked when a request is rate-limited.
+        // It's an alternative to the `message` option for more complex logic.
+        // Here, we ensure a JSON response.
+        res.status(options.statusCode).json({ // options.statusCode is HttpStatusCode.TOO_MANY_REQUESTS
+            success: false,
+            message: options.message.message || `Too many requests, please try again later. You have exceeded the ${options.max} requests in ${options.windowMs / 60000} minutes limit!`,
+            // errors: [{ message: options.message }], // options.message would be the output of the message function or string
+        });
+    },
+    skip: (req, res) => {
+        // Optionally skip rate limiting for certain conditions
+        // For example, allow more requests from authenticated users or specific IPs
+        // if (req.isAuthenticated &amp;&amp; req.isAuthenticated()) return true; // Example for authenticated users
+        return bridge.isTest; // Skip rate limiting in test environment
+    },
+});
+
+/**
+ * @function createRateLimiter
+ * @description Creates a custom rate limiter with specific options.
+ * This allows for different rate limits on different routes if needed.
+ *
+ * @param {number} customWindowMs - The time window in milliseconds.
+ * @param {number} customMaxRequests - The maximum number of requests allowed in the window.
+ * @param {string} [customMessage="Too many requests, please try again later."] - Custom message for rate-limited responses.
+ * @returns {Function} Express rate limit middleware instance.
+ *
+ * @example
+ * // In your route file:
+ * // import { createRateLimiter } from '../middlewares/rateLimiter.middleware.js';
+ * // const loginRateLimiter = createRateLimiter(5 * 60 * 1000, 5, "Too many login attempts. Please try again in 5 minutes.");
+ * // router.post('/login', loginRateLimiter, authController.login);
+ */
+export const createRateLimiter = (customWindowMs, customMaxRequests, customMessage = "Too many requests, please try again later.") => {
+    return rateLimit({
+        windowMs: customWindowMs,
+        max: customMaxRequests,
+        standardHeaders: true,
+        legacyHeaders: false,
+        message: {
+            success: false,
+            message: customMessage,
+        },
+        handler: (req, res, next, options) => {
+             res.status(options.statusCode).json({
+                success: false,
+                message: options.message.message || customMessage,
+            });
+        },
+    });
+};</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Namespaces</h3><ul><li><a href="bridge.html">bridge</a></li></ul><h3>Classes</h3><ul><li><a href="ApiError.html">ApiError</a></li><li><a href="ApiResponse.html">ApiResponse</a></li></ul><h3>Global</h3><ul><li><a href="global.html#AppMessages">AppMessages</a></li><li><a href="global.html#BASE_URL">BASE_URL</a></li><li><a href="global.html#DB_NAME">DB_NAME</a></li><li><a href="global.html#FRONTEND_URL">FRONTEND_URL</a></li><li><a href="global.html#HttpStatusCode">HttpStatusCode</a></li><li><a href="global.html#OAuthProviders">OAuthProviders</a></li><li><a href="global.html#PlanTypes">PlanTypes</a></li><li><a href="global.html#STRIPE_PLAN_PRICE_IDS">STRIPE_PLAN_PRICE_IDS</a></li><li><a href="global.html#STRIPE_WEBHOOK_SECRET">STRIPE_WEBHOOK_SECRET</a></li><li><a href="global.html#UserRoles">UserRoles</a></li><li><a href="global.html#asyncHandler">asyncHandler</a></li><li><a href="global.html#connectDB">connectDB</a></li><li><a href="global.html#createCheckoutSession">createCheckoutSession</a></li><li><a href="global.html#createRateLimiter">createRateLimiter</a></li><li><a href="global.html#errorHandler">errorHandler</a></li><li><a href="global.html#getCurrentUser">getCurrentUser</a></li><li><a href="global.html#handleOAuthFailure">handleOAuthFailure</a></li><li><a href="global.html#handleOAuthSuccess">handleOAuthSuccess</a></li><li><a href="global.html#handleStripeWebhook">handleStripeWebhook</a></li><li><a href="global.html#isAuthenticated">isAuthenticated</a></li><li><a href="global.html#logoutUser">logoutUser</a></li><li><a href="global.html#manageSubscriptionPortal">manageSubscriptionPortal</a></li><li><a href="global.html#rateLimiter">rateLimiter</a></li><li><a href="global.html#stripe">stripe</a></li><li><a href="global.html#upgradeToYearly">upgradeToYearly</a></li><li><a href="global.html#validate">validate</a></li><li><a href="global.html#validatePlanIdSchema">validatePlanIdSchema</a></li><li><a href="global.html#validateReferralCodeSchema">validateReferralCodeSchema</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 4.0.4</a> on Sat May 31 2025 22:19:47 GMT+0200 (Central European Summer Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

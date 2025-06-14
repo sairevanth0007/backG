@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: routes/payment.routes.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: routes/payment.routes.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>/**
+ * @file routes/payment.routes.js
+ * @description Payment-related API routes for Stripe integration.
+ * @author Your Name
+ */
+
+import { Router } from 'express';
+import { paymentController } from '../controllers/payment.controller.js';
+import { isAuthenticated } from '../middlewares/auth.middleware.js';
+import { validate } from '../middlewares/validator.middleware.js';
+import { validatePlanIdSchema } from '../validators/payment.validator.js';
+
+const router = Router();
+
+/**
+ * @swagger
+ * /payment/webhook:
+ *   post:
+ *     summary: Stripe webhook endpoint.
+ *     description: Receives asynchronous events from Stripe to update subscription status in the database. This endpoint requires raw JSON body for signature verification and must be publicly accessible by Stripe.
+ *     tags:
+ *       - Payment
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             description: The raw JSON payload from Stripe.
+ *     responses:
+ *       200:
+ *         description: Webhook received and processed successfully.
+ *       400:
+ *         description: Bad request due to invalid signature or malformed event.
+ */
+router.post('/webhook', paymentController.handleStripeWebhook); // Note: raw body parsing for this route is handled in app.js
+
+/**
+ * @swagger
+ * /payment/create-checkout-session:
+ *   post:
+ *     summary: Creates a Stripe Checkout Session.
+ *     description: Initiates the process for a user to subscribe to a plan by creating a Stripe Checkout Session URL. The user is redirected to this URL to complete payment.
+ *     tags:
+ *       - Payment
+ *     security:
+ *       - cookieAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/PlanIdPayload'
+ *     responses:
+ *       200:
+ *         description: Stripe Checkout Session created successfully. Returns the session ID and URL.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiResponse'
+ *             example:
+ *               statusCode: 200
+ *               data:
+ *                 sessionId: "cs_test_12345"
+ *                 url: "https://checkout.stripe.com/c/pay/cs_test_12345"
+ *               message: "Stripe Checkout Session created successfully."
+ *               success: true
+ *       400:
+ *         description: Bad request (e.g., missing planId, invalid planId, inactive plan, or user has no Stripe Customer ID).
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiError'
+ *       401:
+ *         description: Unauthorized if user is not logged in.
+ *       500:
+ *         description: Internal server error during session creation.
+ */
+router.post('/create-checkout-session', isAuthenticated, validate(validatePlanIdSchema), paymentController.createCheckoutSession);
+
+/**
+ * @swagger
+ * /payment/upgrade-to-yearly:
+ *   post:
+ *     summary: Upgrades an existing Monthly subscription to a Yearly plan.
+ *     description: Changes the user's current active Monthly Stripe subscription to the equivalent Yearly plan. Proration is handled by Stripe.
+ *     tags:
+ *       - Payment
+ *     security:
+ *       - cookieAuth: []
+ *     responses:
+ *       200:
+ *         description: Subscription successfully upgraded to Yearly Plan.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiResponse'
+ *             example:
+ *               statusCode: 200
+ *               data:
+ *                 subscriptionId: "sub_123abc"
+ *                 newPriceId: "price_yearly_pro"
+ *               message: "Subscription successfully upgraded to Yearly Plan."
+ *               success: true
+ *       400:
+ *         description: Bad request (e.g., user not on active Monthly plan, no active subscription).
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiError'
+ *       401:
+ *         description: Unauthorized if user is not logged in.
+ *       404:
+ *         description: Yearly plan not found in database.
+ *       500:
+ *         description: Internal server error during upgrade process.
+ */
+router.post('/upgrade-to-yearly', isAuthenticated, paymentController.upgradeToYearly);
+
+
+/**
+ * @swagger
+ * /payment/manage-subscription:
+ *   post:
+ *     summary: Creates a Stripe Customer Portal session.
+ *     description: Redirects the user to the Stripe Customer Portal, where they can manage their billing information, view invoices, and cancel their subscription.
+ *     tags:
+ *       - Payment
+ *     security:
+ *       - cookieAuth: []
+ *     responses:
+ *       200:
+ *         description: Stripe Customer Portal session created successfully. Returns the portal URL.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiResponse'
+ *             example:
+ *               statusCode: 200
+ *               data:
+ *                 portalUrl: "https://billing.stripe.com/p/portal/acct_123/session_123"
+ *               message: "Stripe Customer Portal session created successfully."
+ *               success: true
+ *       400:
+ *         description: Bad request (e.g., user has no Stripe Customer ID).
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiError'
+ *       401:
+ *         description: Unauthorized if user is not logged in.
+ *       500:
+ *         description: Internal server error during portal session creation.
+ */
+router.post('/manage-subscription', isAuthenticated, paymentController.manageSubscriptionPortal);
+
+
+export default router;</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Namespaces</h3><ul><li><a href="bridge.html">bridge</a></li></ul><h3>Classes</h3><ul><li><a href="ApiError.html">ApiError</a></li><li><a href="ApiResponse.html">ApiResponse</a></li></ul><h3>Global</h3><ul><li><a href="global.html#AppMessages">AppMessages</a></li><li><a href="global.html#BASE_URL">BASE_URL</a></li><li><a href="global.html#DB_NAME">DB_NAME</a></li><li><a href="global.html#FRONTEND_URL">FRONTEND_URL</a></li><li><a href="global.html#HttpStatusCode">HttpStatusCode</a></li><li><a href="global.html#OAuthProviders">OAuthProviders</a></li><li><a href="global.html#PlanTypes">PlanTypes</a></li><li><a href="global.html#STRIPE_PLAN_PRICE_IDS">STRIPE_PLAN_PRICE_IDS</a></li><li><a href="global.html#STRIPE_WEBHOOK_SECRET">STRIPE_WEBHOOK_SECRET</a></li><li><a href="global.html#UserRoles">UserRoles</a></li><li><a href="global.html#asyncHandler">asyncHandler</a></li><li><a href="global.html#connectDB">connectDB</a></li><li><a href="global.html#createCheckoutSession">createCheckoutSession</a></li><li><a href="global.html#createRateLimiter">createRateLimiter</a></li><li><a href="global.html#errorHandler">errorHandler</a></li><li><a href="global.html#getCurrentUser">getCurrentUser</a></li><li><a href="global.html#handleOAuthFailure">handleOAuthFailure</a></li><li><a href="global.html#handleOAuthSuccess">handleOAuthSuccess</a></li><li><a href="global.html#handleStripeWebhook">handleStripeWebhook</a></li><li><a href="global.html#isAuthenticated">isAuthenticated</a></li><li><a href="global.html#logoutUser">logoutUser</a></li><li><a href="global.html#manageSubscriptionPortal">manageSubscriptionPortal</a></li><li><a href="global.html#rateLimiter">rateLimiter</a></li><li><a href="global.html#stripe">stripe</a></li><li><a href="global.html#upgradeToYearly">upgradeToYearly</a></li><li><a href="global.html#validate">validate</a></li><li><a href="global.html#validatePlanIdSchema">validatePlanIdSchema</a></li><li><a href="global.html#validateReferralCodeSchema">validateReferralCodeSchema</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 4.0.4</a> on Sat May 31 2025 22:19:47 GMT+0200 (Central European Summer Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

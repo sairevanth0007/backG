@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: config/swagger.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: config/swagger.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>/**
+ * @file config/swagger.js
+ * @description Configuration for Swagger API documentation using JSDoc comments.
+ * @author Your Name
+ */
+
+import { bridge } from '../bridge.js';
+
+const swaggerDefinition = {
+    openapi: '3.0.0', // Specify OpenAPI version
+    info: {
+        title: 'My Backend API',
+        version: '1.0.0',
+        description: 'A robust backend for subscription management, OAuth authentication, and referral system.',
+        contact: {
+            name: 'Your Name',
+            email: 'your.email@example.com',
+            url: 'https://yourwebsite.com',
+        },
+    },
+    servers: [
+        {
+            url: `${bridge.BASE_URL}/api/v1`,
+            description: 'Development Server',
+        },
+        // {
+        //     url: 'https://yourproductionapi.com/api/v1',
+        //     description: 'Production Server',
+        // },
+    ],
+    components: {
+        securitySchemes: {
+            // Define security schemes (e.g., for session-based authentication)
+            cookieAuth: {
+                type: 'apiKey',
+                in: 'cookie',
+                name: 'connect.sid', // Name of the session cookie
+                description: 'Session cookie for authentication. Obtained after successful OAuth login.',
+            },
+            // Add if you use JWT tokens for direct API calls after OAuth
+            // bearerAuth: {
+            //     type: 'http',
+            //     scheme: 'bearer',
+            //     bearerFormat: 'JWT',
+            //     description: 'JWT authorization header (e.g., "Bearer YOUR_TOKEN").'
+            // }
+        },
+        schemas: {
+            ApiResponse: {
+                type: 'object',
+                properties: {
+                    statusCode: { type: 'integer' },
+                    data: { type: 'object', nullable: true },
+                    message: { type: 'string' },
+                    success: { type: 'boolean' },
+                },
+                example: {
+                    statusCode: 200,
+                    data: { id: 'someId', name: 'example' },
+                    message: 'Success',
+                    success: true,
+                },
+            },
+            ApiError: {
+                type: 'object',
+                properties: {
+                    success: { type: 'boolean', default: false },
+                    message: { type: 'string' },
+                    errors: {
+                        type: 'array',
+                        items: {
+                            type: 'object',
+                            properties: {
+                                field: { type: 'string', nullable: true },
+                                message: { type: 'string' },
+                            },
+                        },
+                        nullable: true,
+                    },
+                    stack: { type: 'string', nullable: true },
+                },
+                example: {
+                    success: false,
+                    message: 'Unauthorized access. Please login.',
+                    errors: null,
+                    statusCode: 401,
+                },
+            },
+            PlanIdPayload: {
+                type: 'object',
+                required: ['planId'],
+                properties: {
+                    planId: {
+                        type: 'string',
+                        description: 'MongoDB ObjectId of the selected plan',
+                        example: '60c72b2f9f1b2c001c8e4d6a'
+                    }
+                }
+            }
+        },
+    },
+};
+
+const swaggerOptions = {
+    swaggerDefinition: swaggerDefinition,
+    apis: [
+        './routes/*.js', // Path to your API routes
+        './controllers/*.js', // Path to your controllers if you use JSDoc there for schemas
+        './models/*.js', // Path to your models for schema definitions
+    ],
+};
+
+export default swaggerOptions;</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Namespaces</h3><ul><li><a href="bridge.html">bridge</a></li></ul><h3>Classes</h3><ul><li><a href="ApiError.html">ApiError</a></li><li><a href="ApiResponse.html">ApiResponse</a></li></ul><h3>Global</h3><ul><li><a href="global.html#AppMessages">AppMessages</a></li><li><a href="global.html#BASE_URL">BASE_URL</a></li><li><a href="global.html#DB_NAME">DB_NAME</a></li><li><a href="global.html#FRONTEND_URL">FRONTEND_URL</a></li><li><a href="global.html#HttpStatusCode">HttpStatusCode</a></li><li><a href="global.html#OAuthProviders">OAuthProviders</a></li><li><a href="global.html#PlanTypes">PlanTypes</a></li><li><a href="global.html#STRIPE_PLAN_PRICE_IDS">STRIPE_PLAN_PRICE_IDS</a></li><li><a href="global.html#STRIPE_WEBHOOK_SECRET">STRIPE_WEBHOOK_SECRET</a></li><li><a href="global.html#UserRoles">UserRoles</a></li><li><a href="global.html#asyncHandler">asyncHandler</a></li><li><a href="global.html#connectDB">connectDB</a></li><li><a href="global.html#createCheckoutSession">createCheckoutSession</a></li><li><a href="global.html#createRateLimiter">createRateLimiter</a></li><li><a href="global.html#errorHandler">errorHandler</a></li><li><a href="global.html#getCurrentUser">getCurrentUser</a></li><li><a href="global.html#handleOAuthFailure">handleOAuthFailure</a></li><li><a href="global.html#handleOAuthSuccess">handleOAuthSuccess</a></li><li><a href="global.html#handleStripeWebhook">handleStripeWebhook</a></li><li><a href="global.html#isAuthenticated">isAuthenticated</a></li><li><a href="global.html#logoutUser">logoutUser</a></li><li><a href="global.html#manageSubscriptionPortal">manageSubscriptionPortal</a></li><li><a href="global.html#rateLimiter">rateLimiter</a></li><li><a href="global.html#stripe">stripe</a></li><li><a href="global.html#upgradeToYearly">upgradeToYearly</a></li><li><a href="global.html#validate">validate</a></li><li><a href="global.html#validatePlanIdSchema">validatePlanIdSchema</a></li><li><a href="global.html#validateReferralCodeSchema">validateReferralCodeSchema</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 4.0.4</a> on Sat May 31 2025 22:19:47 GMT+0200 (Central European Summer Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

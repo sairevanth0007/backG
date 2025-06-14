@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: controllers/payment.controller.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: controllers/payment.controller.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>/**
+ * @file controllers/payment.controller.js
+ * @description Controller for Stripe payment operations and webhook handling.
+ * @author Your Name
+ */
+
+import { asyncHandler } from '../utils/asyncHandler.js';
+import { ApiResponse } from '../utils/ApiResponse.js';
+import { ApiError } from '../utils/ApiError.js';
+import { HttpStatusCode, AppMessages, PlanTypes } from '../constants/index.js';
+import { stripe, STRIPE_PLAN_PRICE_IDS, stripeWebhookSecret } from '../config/stripe.js';
+import { User } from '../models/user.model.js';
+import { Plan } from '../models/plan.model.js';
+import { bridge } from '../bridge.js';
+
+// Helper function to add duration to a date
+function addDays(date, days) {
+    const result = new Date(date);
+    result.setDate(result.getDate() + days);
+    return result;
+}
+
+function addMonths(date, months) {
+    const result = new Date(date);
+    result.setMonth(result.getMonth() + months);
+    return result;
+}
+
+/**
+ * @async
+ * @function createCheckoutSession
+ * @description Creates a Stripe Checkout Session for a new subscription.
+ * @param {Express.Request} req - Express request object.
+ * @param {Express.Response} res - Express response object.
+ * @param {Express.NextFunction} next - Express next middleware function.
+ */
+const createCheckoutSession = asyncHandler(async (req, res, next) => {
+    const { planId } = req.body;
+    const userId = req.user._id;
+
+    if (!planId) {
+        throw new ApiError(HttpStatusCode.BAD_REQUEST, 'Plan ID is required to create a checkout session.');
+    }
+
+    const plan = await Plan.findById(planId);
+    if (!plan || !plan.isActive) {
+        throw new ApiError(HttpStatusCode.BAD_REQUEST, 'Selected plan not found or is inactive.');
+    }
+
+    let user = req.user;
+    let stripeCustomerId = user.stripeCustomerId;
+
+    if (!stripeCustomerId) {
+        const customer = await stripe.customers.create({
+            email: user.email,
+            name: user.name,
+            metadata: {
+                userId: userId.toString(),
+            },
+        });
+        stripeCustomerId = customer.id;
+        user.stripeCustomerId = stripeCustomerId;
+        await user.save({ validateBeforeSave: false });
+    }
+
+    const successUrl = `${bridge.FRONTEND_URL}/dashboard?payment=success&amp;session_id={CHECKOUT_SESSION_ID}`;
+    const cancelUrl = `${bridge.FRONTEND_URL}/dashboard?payment=canceled`;
+
+    try {
+        const session = await stripe.checkout.sessions.create({
+            customer: stripeCustomerId,
+            line_items: [
+                {
+                    price: plan.stripePriceId,
+                    quantity: 1,
+                },
+            ],
+            mode: 'subscription',
+            success_url: successUrl,
+            cancel_url: cancelUrl,
+            metadata: {
+                userId: userId.toString(),
+                planId: plan._id.toString(),
+                planType: plan.type,
+            },
+            subscription_data: {
+                metadata: {
+                    userId: userId.toString(),
+                },
+            },
+            allow_promotion_codes: true,
+        });
+
+        return res.status(HttpStatusCode.OK).json(new ApiResponse(
+            HttpStatusCode.OK,
+            { sessionId: session.id, url: session.url },
+            'Stripe Checkout Session created successfully.'
+        ));
+
+    } catch (error) {
+        console.error("Error creating Stripe Checkout Session:", error);
+        throw new ApiError(
+            HttpStatusCode.INTERNAL_SERVER_ERROR,
+            error.message || 'Failed to create Stripe Checkout Session.'
+        );
+    }
+});
+
+/**
+ * @async
+ * @function handleStripeWebhook
+ * @description Handles incoming Stripe webhook events.
+ * This endpoint is public and should not have authentication middleware.
+ * @param {Express.Request} req - Express request object.
+ * @param {Express.Response} res - Express response object.
+ */
+const handleStripeWebhook = asyncHandler(async (req, res) => {
+    const sig = req.headers['stripe-signature'];
+    let event;
+
+    try {
+        event = stripe.webhooks.constructEvent(req.body, sig, stripeWebhookSecret);
+    } catch (err) {
+        console.error(`❌ Webhook Error: ${err.message}`);
+        return res.status(HttpStatusCode.BAD_REQUEST).send(`Webhook Error: ${err.message}`);
+    }
+
+    switch (event.type) {
+        case 'checkout.session.completed':
+            const session = event.data.object;
+            console.log(`✅ Checkout Session Completed: ${session.id}`);
+
+            if (session.subscription) {
+                const subscription = await stripe.subscriptions.retrieve(session.subscription);
+                const userId = session.metadata.userId;
+                const planId = session.metadata.planId;
+                const planType = session.metadata.planType;
+
+                const user = await User.findById(userId);
+                const plan = await Plan.findById(planId);
+
+                if (user &amp;&amp; plan) {
+                    user.stripeSubscriptionId = subscription.id;
+                    user.stripeCustomerId = session.customer.toString();
+                    user.currentPlanId = plan._id;
+                    user.currentPlanType = plan.type;
+                    user.subscriptionStatus = subscription.status;
+                    user.subscriptionExpiresAt = new Date(subscription.current_period_end * 1000);
+                    
+                    await user.save({ validateBeforeSave: false });
+                    console.log(`User ${user.email} subscription updated to ${plan.name}.`);
+                } else {
+                    console.error(`User or Plan not found for checkout.session.completed. UserID: ${userId}, PlanID: ${planId}`);
+                }
+            } else {
+                console.warn(`Checkout session ${session.id} completed but no subscription attached.`);
+            }
+            break;
+
+        case 'invoice.payment_succeeded':
+            const invoice = event.data.object;
+            console.log(`💰 Invoice Payment Succeeded: ${invoice.id}`);
+            if (invoice.subscription) {
+                const subscription = await stripe.subscriptions.retrieve(invoice.subscription);
+                const user = await User.findOne({ stripeSubscriptionId: subscription.id });
+
+                if (user) {
+                    user.subscriptionStatus = subscription.status;
+                    user.subscriptionExpiresAt = new Date(subscription.current_period_end * 1000);
+                    await user.save({ validateBeforeSave: false });
+                    console.log(`User ${user.email} subscription extended via invoice payment.`);
+                } else {
+                    console.warn(`User not found for subscription ID ${subscription.id} during invoice.payment_succeeded.`);
+                }
+            }
+            break;
+
+        case 'customer.subscription.updated':
+            const updatedSubscription = event.data.object;
+            console.log(`🔄 Subscription Updated: ${updatedSubscription.id}`);
+            const userUpdated = await User.findOne({ stripeSubscriptionId: updatedSubscription.id });
+            if (userUpdated) {
+                userUpdated.subscriptionStatus = updatedSubscription.status;
+                userUpdated.subscriptionExpiresAt = new Date(updatedSubscription.current_period_end * 1000);
+
+                if (updatedSubscription.items.data.length > 0) {
+                    const newPriceId = updatedSubscription.items.data[0].price.id;
+                    const newPlan = await Plan.findOne({ stripePriceId: newPriceId });
+                    if (newPlan) {
+                        userUpdated.currentPlanId = newPlan._id;
+                        userUpdated.currentPlanType = newPlan.type;
+                    }
+                }
+                await userUpdated.save({ validateBeforeSave: false });
+                console.log(`User ${userUpdated.email} subscription details updated (status: ${userUpdated.subscriptionStatus}, expires: ${userUpdated.subscriptionExpiresAt}).`);
+            }
+            break;
+
+        case 'customer.subscription.deleted':
+            const deletedSubscription = event.data.object;
+            console.log(`🗑️ Subscription Deleted: ${deletedSubscription.id}`);
+            const userDeleted = await User.findOne({ stripeSubscriptionId: deletedSubscription.id });
+            if (userDeleted) {
+                userDeleted.stripeSubscriptionId = null;
+                userDeleted.currentPlanId = null;
+                userDeleted.currentPlanType = null;
+                userDeleted.subscriptionStatus = 'canceled';
+                userDeleted.subscriptionExpiresAt = deletedSubscription.current_period_end ? new Date(deletedSubscription.current_period_end * 1000) : new Date();
+                await userDeleted.save({ validateBeforeSave: false });
+                console.log(`User ${userDeleted.email} subscription marked as canceled.`);
+            }
+            break;
+
+        default:
+            console.log(`Unhandled event type ${event.type}`);
+    }
+
+    res.status(HttpStatusCode.OK).send('Webhook Received');
+});
+
+
+/**
+ * @async
+ * @function upgradeToYearly
+ * @description Allows a user to upgrade their existing Monthly subscription to a Yearly subscription.
+ * This updates the existing Stripe subscription.
+ * @param {Express.Request} req - Express request object.
+ * @param {Express.Response} res - Express response object.
+ */
+const upgradeToYearly = asyncHandler(async (req, res) => {
+    const user = req.user;
+
+    if (!user.stripeSubscriptionId || user.subscriptionStatus !== 'active' || user.currentPlanType !== PlanTypes.MONTHLY) {
+        throw new ApiError(
+            HttpStatusCode.BAD_REQUEST,
+            'You must have an active Monthly plan to upgrade to Yearly.'
+        );
+    }
+
+    const yearlyPlan = await Plan.findOne({ type: PlanTypes.YEARLY, isActive: true });
+    if (!yearlyPlan) {
+        throw new ApiError(HttpStatusCode.NOT_FOUND, 'Yearly plan not found in database.');
+    }
+    if (!yearlyPlan.stripePriceId) {
+        console.error(`Yearly plan (${yearlyPlan.name}) missing Stripe Price ID.`);
+        throw new ApiError(HttpStatusCode.INTERNAL_SERVER_ERROR, 'Yearly plan misconfigured.');
+    }
+
+    try {
+        const currentSubscription = await stripe.subscriptions.retrieve(user.stripeSubscriptionId);
+
+        const subscriptionItem = currentSubscription.items.data.find(item => item.price.id === user.currentPlanId.stripePriceId);
+        if (!subscriptionItem) {
+            throw new ApiError(HttpStatusCode.INTERNAL_SERVER_ERROR, 'Could not find current subscription item.');
+        }
+
+        const updatedSubscription = await stripe.subscriptions.update(user.stripeSubscriptionId, {
+            items: [
+                {
+                    id: subscriptionItem.id,
+                    price: yearlyPlan.stripePriceId,
+                },
+            ],
+        });
+
+        return res.status(HttpStatusCode.OK).json(new ApiResponse(
+            HttpStatusCode.OK,
+            { subscriptionId: updatedSubscription.id, newPriceId: yearlyPlan.stripePriceId },
+            'Subscription successfully upgraded to Yearly Plan.'
+        ));
+
+    } catch (error) {
+        console.error("Error upgrading subscription:", error);
+        throw new ApiError(
+            HttpStatusCode.INTERNAL_SERVER_ERROR,
+            error.message || 'Failed to upgrade subscription.'
+        );
+    }
+});
+
+
+/**
+ * @async
+ * @function manageSubscriptionPortal
+ * @description Creates a Stripe Customer Portal session for users to manage their subscription.
+ * @param {Express.Request} req - Express request object.
+ * @param {Express.Response} res - Express response object.
+ */
+const manageSubscriptionPortal = asyncHandler(async (req, res) => {
+    const user = req.user;
+
+    if (!user.stripeCustomerId) {
+        throw new ApiError(
+            HttpStatusCode.BAD_REQUEST,
+            'You do not have an active Stripe customer ID to manage subscriptions.'
+        );
+    }
+
+    try {
+        const session = await stripe.billingPortal.sessions.create({
+            customer: user.stripeCustomerId,
+            return_url: `${bridge.FRONTEND_URL}/dashboard?portal=return`,
+        });
+
+        return res.status(HttpStatusCode.OK).json(new ApiResponse(
+            HttpStatusCode.OK,
+            { portalUrl: session.url },
+            'Stripe Customer Portal session created successfully.'
+        ));
+    } catch (error) {
+        console.error("Error creating Stripe Customer Portal session:", error);
+        throw new ApiError(
+            HttpStatusCode.INTERNAL_SERVER_ERROR,
+            error.message || 'Failed to create Stripe Customer Portal session.'
+        );
+    }
+});
+
+
+export const paymentController = {
+    createCheckoutSession,
+    handleStripeWebhook,
+    upgradeToYearly,
+    manageSubscriptionPortal,
+};</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Namespaces</h3><ul><li><a href="bridge.html">bridge</a></li></ul><h3>Classes</h3><ul><li><a href="ApiError.html">ApiError</a></li><li><a href="ApiResponse.html">ApiResponse</a></li></ul><h3>Global</h3><ul><li><a href="global.html#AppMessages">AppMessages</a></li><li><a href="global.html#BASE_URL">BASE_URL</a></li><li><a href="global.html#DB_NAME">DB_NAME</a></li><li><a href="global.html#FRONTEND_URL">FRONTEND_URL</a></li><li><a href="global.html#HttpStatusCode">HttpStatusCode</a></li><li><a href="global.html#OAuthProviders">OAuthProviders</a></li><li><a href="global.html#PlanTypes">PlanTypes</a></li><li><a href="global.html#STRIPE_PLAN_PRICE_IDS">STRIPE_PLAN_PRICE_IDS</a></li><li><a href="global.html#STRIPE_WEBHOOK_SECRET">STRIPE_WEBHOOK_SECRET</a></li><li><a href="global.html#UserRoles">UserRoles</a></li><li><a href="global.html#asyncHandler">asyncHandler</a></li><li><a href="global.html#connectDB">connectDB</a></li><li><a href="global.html#createCheckoutSession">createCheckoutSession</a></li><li><a href="global.html#createRateLimiter">createRateLimiter</a></li><li><a href="global.html#errorHandler">errorHandler</a></li><li><a href="global.html#getCurrentUser">getCurrentUser</a></li><li><a href="global.html#handleOAuthFailure">handleOAuthFailure</a></li><li><a href="global.html#handleOAuthSuccess">handleOAuthSuccess</a></li><li><a href="global.html#handleStripeWebhook">handleStripeWebhook</a></li><li><a href="global.html#isAuthenticated">isAuthenticated</a></li><li><a href="global.html#logoutUser">logoutUser</a></li><li><a href="global.html#manageSubscriptionPortal">manageSubscriptionPortal</a></li><li><a href="global.html#rateLimiter">rateLimiter</a></li><li><a href="global.html#stripe">stripe</a></li><li><a href="global.html#upgradeToYearly">upgradeToYearly</a></li><li><a href="global.html#validate">validate</a></li><li><a href="global.html#validatePlanIdSchema">validatePlanIdSchema</a></li><li><a href="global.html#validateReferralCodeSchema">validateReferralCodeSchema</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 4.0.4</a> on Sat May 31 2025 22:19:47 GMT+0200 (Central European Summer Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

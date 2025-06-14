@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: models/user.model.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: models/user.model.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>/**
+ * @file models/user.model.js
+ * @description Defines the Mongoose schema for Users.
+ * @author Your Name
+ */
+
+import mongoose, { Schema } from 'mongoose';
+import jwt from 'jsonwebtoken';
+// import bcrypt from 'bcryptjs'; // Not directly used for OAuth-only, but good to have if local auth is added
+import { OAuthProviders, PlanTypes } from '../constants/index.js';
+
+/**
+ * @typedef {object} User
+ * @property {string} email - User's email address (unique).
+ * @property {string} name - User's full name.
+ * @property {string} [avatar] - URL to the user's avatar image.
+ * @property {string} provider - The OAuth provider used for login (e.g., 'google', 'github', 'microsoft').
+ * @property {string} providerId - The unique ID of the user from the OAuth provider.
+ * @property {mongoose.Schema.Types.ObjectId} [referredBy] - The User ID of the person who referred this user.
+ * @property {mongoose.Schema.Types.ObjectId} [referralDetails] - Reference to this user's own referral record in the Referral collection.
+ * @property {string} [stripeCustomerId] - Stripe customer ID for this user.
+ * @property {string} [stripeSubscriptionId] - Stripe subscription ID for the current active subscription.
+ * @property {string} [subscriptionStatus] - Status of the user's subscription (e.g., 'active', 'trialing', 'past_due', 'canceled', 'inactive').
+ * @property {mongoose.Schema.Types.ObjectId} [currentPlanId] - Reference to the Plan collection for the user's current active plan.
+ * @property {string} [currentPlanType] - Type of the current plan ('Monthly', 'Yearly', 'FreeTrial'). Useful for quick checks.
+ * @property {Date} [subscriptionExpiresAt] - Date when the current subscription or trial period expires.
+ * @property {boolean} [isFreeTrialEligible] - Flag indicating if the user is still eligible for a free trial. Defaults to true.
+ * @property {boolean} [hasUsedFreeTrial] - Flag indicating if the user has already used their free trial. Defaults to false.
+ * @property {Date} [lastLoginAt] - Timestamp of the user's last login.
+ * @property {string} [refreshToken] - JWT refresh token (if implementing JWT for session management alongside OAuth).
+ * @property {Date} createdAt - Timestamp of when the user was created.
+ * @property {Date} updatedAt - Timestamp of when the user was last updated.
+ */
+const userSchema = new Schema(
+    {
+        email: {
+            type: String,
+            required: [true, 'Email is required.'],
+            unique: true,
+            lowercase: true,
+            trim: true,
+            match: [/\S+@\S+\.\S+/, 'Please use a valid email address.'],
+        },
+        name: {
+            type: String,
+            required: [true, 'Name is required.'],
+            trim: true,
+        },
+        avatar: {
+            type: String, // URL
+            trim: true,
+        },
+        provider: {
+            type: String,
+            required: [true, 'OAuth provider is required.'],
+            enum: {
+                values: Object.values(OAuthProviders),
+                message: 'Invalid OAuth provider.',
+            },
+        },
+        providerId: {
+            type: String,
+            required: [true, 'OAuth provider ID is required.'],
+        },
+        // Referral System
+        referredBy: { // User ID of the one who referred this user
+            type: Schema.Types.ObjectId,
+            ref: 'User',
+            default: null,
+        },
+        referralDetails: { // Link to this user's own referral code document
+            type: Schema.Types.ObjectId,
+            ref: 'Referral',
+            default: null,
+        },
+        // Stripe and Subscription Details
+        stripeCustomerId: {
+            type: String,
+            trim: true,
+        },
+        stripeSubscriptionId: {
+            type: String,
+            trim: true,
+        },
+        subscriptionStatus: {
+            type: String,
+            trim: true,
+            enum: [
+                null, // No active subscription or status not set
+                PlanTypes.FREE_TRIAL, // Specifically for free trial status
+                'active',        // Paid subscription is active
+                'trialing',      // Stripe trial period (if used directly from Stripe)
+                'past_due',      // Payment failed
+                'canceled',      // Subscription was canceled by user or admin
+                'unpaid',        // Stripe status for unpaid
+                'incomplete',    // Stripe status for incomplete payment
+                'incomplete_expired', // Stripe status
+                'ended'          // Subscription has ended naturally and not renewed
+            ],
+            default: null,
+        },
+        currentPlanId: { // ID of the plan from Plan collection
+            type: Schema.Types.ObjectId,
+            ref: 'Plan',
+            default: null,
+        },
+        currentPlanType: { // For easier querying ('Monthly', 'Yearly', 'FreeTrial')
+            type: String,
+            enum: [...Object.values(PlanTypes), null], // null if no plan
+            default: null,
+        },
+        subscriptionExpiresAt: {
+            type: Date,
+            default: null,
+        },
+        isFreeTrialEligible: { // Can the user activate a free trial?
+            type: Boolean,
+            default: true,
+        },
+        hasUsedFreeTrial: { // Has the user consumed their free trial?
+            type: Boolean,
+            default: false,
+        },
+        lastLoginAt: {
+            type: Date,
+        },
+        refreshToken: { // For JWT based auth persistence if needed beyond OAuth session
+            type: String,
+            trim: true,
+        },
+    },
+    {
+        timestamps: true,
+        // Create a compound index for provider and providerId for faster lookups
+        // and to ensure a user is unique per provider.
+        indexes: [{ fields: { provider: 1, providerId: 1 }, unique: true }],
+    }
+);
+
+// --- JWT Token Generation Methods (Optional - useful if you want your own API tokens post-OAuth) ---
+
+/**
+ * @method generateAccessToken
+ * @memberof User
+ * @instance
+ * @description Generates a JWT access token for the user.
+ * @returns {string} JWT access token.
+ */
+userSchema.methods.generateAccessToken = function () {
+    return jwt.sign(
+        {
+            _id: this._id,
+            email: this.email,
+            name: this.name,
+            provider: this.provider,
+        },
+        process.env.ACCESS_TOKEN_SECRET,
+        {
+            expiresIn: process.env.ACCESS_TOKEN_EXPIRY,
+        }
+    );
+};
+
+/**
+ * @method generateRefreshToken
+ * @memberof User
+ * @instance
+ * @description Generates a JWT refresh token for the user.
+ * @returns {string} JWT refresh token.
+ */
+userSchema.methods.generateRefreshToken = function () {
+    return jwt.sign(
+        {
+            _id: this._id,
+        },
+        process.env.REFRESH_TOKEN_SECRET,
+        {
+            expiresIn: process.env.REFRESH_TOKEN_EXPIRY,
+        }
+    );
+};
+
+export const User = mongoose.model('User', userSchema);</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Namespaces</h3><ul><li><a href="bridge.html">bridge</a></li></ul><h3>Classes</h3><ul><li><a href="ApiError.html">ApiError</a></li><li><a href="ApiResponse.html">ApiResponse</a></li></ul><h3>Global</h3><ul><li><a href="global.html#AppMessages">AppMessages</a></li><li><a href="global.html#BASE_URL">BASE_URL</a></li><li><a href="global.html#DB_NAME">DB_NAME</a></li><li><a href="global.html#FRONTEND_URL">FRONTEND_URL</a></li><li><a href="global.html#HttpStatusCode">HttpStatusCode</a></li><li><a href="global.html#OAuthProviders">OAuthProviders</a></li><li><a href="global.html#PlanTypes">PlanTypes</a></li><li><a href="global.html#STRIPE_PLAN_PRICE_IDS">STRIPE_PLAN_PRICE_IDS</a></li><li><a href="global.html#STRIPE_WEBHOOK_SECRET">STRIPE_WEBHOOK_SECRET</a></li><li><a href="global.html#UserRoles">UserRoles</a></li><li><a href="global.html#asyncHandler">asyncHandler</a></li><li><a href="global.html#connectDB">connectDB</a></li><li><a href="global.html#createCheckoutSession">createCheckoutSession</a></li><li><a href="global.html#createRateLimiter">createRateLimiter</a></li><li><a href="global.html#errorHandler">errorHandler</a></li><li><a href="global.html#getCurrentUser">getCurrentUser</a></li><li><a href="global.html#handleOAuthFailure">handleOAuthFailure</a></li><li><a href="global.html#handleOAuthSuccess">handleOAuthSuccess</a></li><li><a href="global.html#handleStripeWebhook">handleStripeWebhook</a></li><li><a href="global.html#isAuthenticated">isAuthenticated</a></li><li><a href="global.html#logoutUser">logoutUser</a></li><li><a href="global.html#manageSubscriptionPortal">manageSubscriptionPortal</a></li><li><a href="global.html#rateLimiter">rateLimiter</a></li><li><a href="global.html#stripe">stripe</a></li><li><a href="global.html#upgradeToYearly">upgradeToYearly</a></li><li><a href="global.html#validate">validate</a></li><li><a href="global.html#validatePlanIdSchema">validatePlanIdSchema</a></li><li><a href="global.html#validateReferralCodeSchema">validateReferralCodeSchema</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 4.0.4</a> on Sat May 31 2025 22:19:47 GMT+0200 (Central European Summer Time)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>
