@@ -86,9 +86,38 @@ router.get('/microsoft', initiateOAuth(OAuthProviders.MICROSOFT, ['openid', 'pro
 router.get('/github', initiateOAuth(OAuthProviders.GITHUB, ['user:email', 'read:user']));
 
 
-// --- OAuth Callback Routes ---
-const oauthCallbackOptions = {
-    failureRedirect: `${bridge.BASE_URL}/api/v1/auth/oauth/failure`,
+/**
+ * @function handlePassportCallback
+ * @description A reusable middleware to handle Passport.js authentication results.
+ * It manually redirects to the frontend with success or specific error messages.
+ * @param {string} provider - The name of the OAuth provider ('google', 'microsoft', 'github').
+ * @returns {Function} Express middleware.
+ */
+const handlePassportCallback = (provider) => (req, res, next) => {
+    passport.authenticate(provider, (err, user, info) => {
+        // 'err' indicates a server-side error during authentication (e.g., network issue, misconfiguration)
+        if (err) {
+            console.error(`Passport authentication error for ${provider}:`, err);
+            return res.redirect(`${bridge.FRONTEND_URL}/login?status=failed&message=${encodeURIComponent('Authentication failed due to server error. Please try again.')}`);
+        }
+
+        // 'user' is false if authentication failed, 'info' contains the message from done(null, false, info)
+        if (!user) {
+            const errorMessage = info && info.message ? info.message : 'OAuth login failed. Please try again.';
+            console.warn(`OAuth authentication failure for ${provider}:`, errorMessage);
+            return res.redirect(`${bridge.FRONTEND_URL}/login?status=failed&message=${encodeURIComponent(errorMessage)}`);
+        }
+
+        // Authentication successful, log the user in to establish a session
+        req.logIn(user, (loginErr) => { // req.logIn is a Passport helper
+            if (loginErr) {
+                console.error(`Error logging in user after ${provider} success:`, loginErr);
+                return res.redirect(`${bridge.FRONTEND_URL}/login?status=failed&message=${encodeURIComponent('Login successful, but session setup failed. Please try again.')}`);
+            }
+            // User successfully logged in and session established, redirect to dashboard
+            return res.redirect(`${bridge.FRONTEND_URL}/dashboard?login=success`);
+        });
+    })(req, res, next); // This syntax is crucial: it calls the passport.authenticate middleware
 };
 
 /**
@@ -96,51 +125,65 @@ const oauthCallbackOptions = {
  * /auth/google/callback:
  *   get:
  *     summary: Google OAuth callback URL.
- *     description: Endpoint for Google to redirect back after user authentication. Handled internally by Passport.
+ *     description: Endpoint for Google to redirect back after user authentication. Handled internally by Passport, redirects to frontend.
  *     tags:
  *       - Auth
  *     responses:
  *       302:
- *         description: Redirects to frontend dashboard on success or login page on failure.
+ *         description: Redirects to frontend dashboard on success or login page on failure with error message.
  */
-router.get('/google/callback',
-    passport.authenticate(OAuthProviders.GOOGLE, oauthCallbackOptions),
-    authController.handleOAuthSuccess
-);
+router.get('/google/callback', handlePassportCallback(OAuthProviders.GOOGLE));
 
 /**
  * @swagger
  * /auth/microsoft/callback:
  *   get:
  *     summary: Microsoft OAuth callback URL.
- *     description: Endpoint for Microsoft to redirect back after user authentication. Handled internally by Passport.
+ *     description: Endpoint for Microsoft to redirect back after user authentication. Handled internally by Passport, redirects to frontend.
  *     tags:
  *       - Auth
  *     responses:
  *       302:
- *         description: Redirects to frontend dashboard on success or login page on failure.
+ *         description: Redirects to frontend dashboard on success or login page on failure with error message.
  */
-router.get('/microsoft/callback',
-    passport.authenticate(OAuthProviders.MICROSOFT, oauthCallbackOptions),
-    authController.handleOAuthSuccess
-);
+router.get('/microsoft/callback', handlePassportCallback(OAuthProviders.MICROSOFT));
 
 /**
  * @swagger
  * /auth/github/callback:
  *   get:
  *     summary: GitHub OAuth callback URL.
- *     description: Endpoint for GitHub to redirect back after user authentication. Handled internally by Passport.
+ *     description: Endpoint for GitHub to redirect back after user authentication. Handled internally by Passport, redirects to frontend.
  *     tags:
  *       - Auth
  *     responses:
  *       302:
- *         description: Redirects to frontend dashboard on success or login page on failure.
+ *         description: Redirects to frontend dashboard on success or login page on failure with error message.
  */
-router.get('/github/callback',
-    passport.authenticate(OAuthProviders.GITHUB, oauthCallbackOptions),
-    authController.handleOAuthSuccess
-);
+router.get('/github/callback', handlePassportCallback(OAuthProviders.GITHUB));
+
+// --- OAuth Failure Route (Optional fallback, can be removed if specific handlers cover all cases) ---
+// Keep this if you want a generic /oauth/failure route for scenarios not caught by specific callbacks.
+// The `handleOAuthFailure` controller already expects a `message` query param.
+/**
+ * @swagger
+ * /auth/oauth/failure:
+ *   get:
+ *     summary: Generic OAuth failure handler.
+ *     description: Redirects to frontend login page with an error message in case of OAuth failure.
+ *     tags:
+ *       - Auth
+ *     parameters:
+ *       - in: query
+ *         name: message
+ *         schema:
+ *           type: string
+ *         description: Error message from the OAuth failure.
+ *     responses:
+ *       302:
+ *         description: Redirects to frontend login page.
+ */
+router.get('/oauth/failure', authController.handleOAuthFailure);
 
 /**
  * @swagger
