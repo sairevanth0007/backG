@@ -13,7 +13,7 @@ import { User } from '../models/user.model.js';
 import { Plan } from '../models/plan.model.js';
 import { bridge } from '../bridge.js';
 
-// Helper function to add duration to a date
+// Helper function to add duration to a date (already in passport-setup, but good to have here too)
 function addDays(date, days) {
     const result = new Date(date);
     result.setDate(result.getDate() + days);
@@ -29,10 +29,16 @@ function addMonths(date, months) {
 /**
  * @async
  * @function createCheckoutSession
- * @description Creates a Stripe Checkout Session for a new subscription.
- * @param {Express.Request} req - Express request object.
- * @param {Express.Response} res - Express response object.
- * @param {Express.NextFunction} next - Express next middleware function.
+ * @route POST /api/v1/payment/create-checkout-session
+ * @description Creates a Stripe Checkout Session for a new subscription or to extend an existing one.
+ * @param {import('express').Request} req - Express request object.
+ * @param {import('express').Response} res - Express response object.
+ * @param {import('express').NextFunction} next - Express next middleware function.
+ * @body {string} planId - The MongoDB _id of the plan the user wants to subscribe to or extend.
+ * @security BasicAuth
+ * @returns {ApiResponse.model} 200 - Contains the Stripe Checkout Session URL.
+ * @returns {ApiError.model} 400 - Bad request if plan not found or invalid.
+ * @returns {ApiError.model} 500 - Internal server error.
  */
 const createCheckoutSession = asyncHandler(async (req, res, next) => {
     const { planId } = req.body;
@@ -59,37 +65,70 @@ const createCheckoutSession = asyncHandler(async (req, res, next) => {
             },
         });
         stripeCustomerId = customer.id;
-        user.stripeCustomerId = stripeCustomerId;
-        await user.save({ validateBeforeSave: false });
+        // The user.save() for stripeCustomerId is now correctly done below after session creation
+        // if it was just generated.
     }
 
     const successUrl = `${bridge.FRONTEND_URL}/dashboard?payment=success&session_id={CHECKOUT_SESSION_ID}`;
     const cancelUrl = `${bridge.FRONTEND_URL}/dashboard?payment=canceled`;
 
+    let sessionMode;
+    let lineItems = [];
+    let metadata = {
+        userId: userId.toString(),
+        planId: plan._id.toString(),
+        planType: plan.type, // Make sure plan.type is always in metadata
+    };
+    let subscriptionData = {};
+
+    const isExtendingSamePlan = (
+        user.subscriptionStatus === 'active' &&
+        user.currentPlanId &&
+        user.currentPlanId.equals(plan._id) &&
+        (plan.type === PlanTypes.MONTHLY || plan.type === PlanTypes.YEARLY)
+    );
+
+    if (isExtendingSamePlan) {
+        sessionMode = 'payment';
+        lineItems.push({
+            price: plan.stripePriceId,
+            quantity: 1,
+        });
+        metadata.paymentPurpose = 'extension';
+        metadata.originalSubscriptionId = user.stripeSubscriptionId;
+        console.log(`User ${user.email} is extending their existing ${plan.type} plan.`);
+
+    } else {
+        sessionMode = 'subscription';
+        lineItems.push({
+            price: plan.stripePriceId,
+            quantity: 1,
+        });
+        subscriptionData = {
+            metadata: {
+                userId: userId.toString(),
+            },
+        };
+        metadata.paymentPurpose = 'new_subscription';
+        console.log(`User ${user.email} is purchasing a NEW ${plan.type} subscription.`);
+    }
+
     try {
         const session = await stripe.checkout.sessions.create({
             customer: stripeCustomerId,
-            line_items: [
-                {
-                    price: plan.stripePriceId,
-                    quantity: 1,
-                },
-            ],
-            mode: 'subscription',
+            line_items: lineItems,
+            mode: sessionMode,
             success_url: successUrl,
             cancel_url: cancelUrl,
-            metadata: {
-                userId: userId.toString(),
-                planId: plan._id.toString(),
-                planType: plan.type,
-            },
-            subscription_data: {
-                metadata: {
-                    userId: userId.toString(),
-                },
-            },
+            metadata: metadata,
+            subscription_data: sessionMode === 'subscription' ? subscriptionData : undefined,
             allow_promotion_codes: true,
         });
+
+        if (!user.stripeCustomerId) {
+             user.stripeCustomerId = stripeCustomerId;
+             await user.save({ validateBeforeSave: false });
+        }
 
         return res.status(HttpStatusCode.OK).json(new ApiResponse(
             HttpStatusCode.OK,
@@ -111,8 +150,9 @@ const createCheckoutSession = asyncHandler(async (req, res, next) => {
  * @function handleStripeWebhook
  * @description Handles incoming Stripe webhook events.
  * This endpoint is public and should not have authentication middleware.
- * @param {Express.Request} req - Express request object.
- * @param {Express.Response} res - Express response object.
+ * @param {import('express').Request} req - Express request object.
+ * @param {import('express').Response} res - Express response object.
+ * @returns {void} Sends a 200 OK response to Stripe.
  */
 const handleStripeWebhook = asyncHandler(async (req, res) => {
     const sig = req.headers['stripe-signature'];
@@ -125,35 +165,65 @@ const handleStripeWebhook = asyncHandler(async (req, res) => {
         return res.status(HttpStatusCode.BAD_REQUEST).send(`Webhook Error: ${err.message}`);
     }
 
+    // Handle the event
     switch (event.type) {
         case 'checkout.session.completed':
             const session = event.data.object;
             console.log(`✅ Checkout Session Completed: ${session.id}`);
 
-            if (session.subscription) {
-                const subscription = await stripe.subscriptions.retrieve(session.subscription);
-                const userId = session.metadata.userId;
-                const planId = session.metadata.planId;
-                const planType = session.metadata.planType;
+            const userId = session.metadata.userId;
+            const planId = session.metadata.planId;
+            const paymentPurpose = session.metadata.paymentPurpose;
+            const purchasedPlanType = session.metadata.planType; // <-- Retrieve the planType from metadata
 
-                const user = await User.findById(userId);
-                const plan = await Plan.findById(planId);
+            const user = await User.findById(userId);
+            const plan = await Plan.findById(planId);
 
-                if (user && plan) {
+            if (!user || !plan) {
+                console.error(`User or Plan not found for checkout.session.completed. UserID: ${userId}, PlanID: ${planId}`);
+                return res.status(HttpStatusCode.OK).send('User or Plan not found, but acknowledged.');
+            }
+
+            if (paymentPurpose === 'extension') {
+                console.log(`Processing extension payment for user ${user.email} (session: ${session.id}).`);
+                
+                // --- START OF DYNAMIC EXTENSION DURATION ---
+                let extensionDurationMonths = 1; // Default to 1 month
+                if (purchasedPlanType === PlanTypes.YEARLY) {
+                    extensionDurationMonths = 12; // If yearly plan was purchased for extension
+                }
+                // --- END OF DYNAMIC EXTENSION DURATION ---
+
+                let newExpiry;
+                if (!user.subscriptionExpiresAt || user.subscriptionExpiresAt < new Date()) {
+                    newExpiry = addMonths(new Date(), extensionDurationMonths);
+                } else {
+                    newExpiry = addMonths(new Date(user.subscriptionExpiresAt), extensionDurationMonths);
+                }
+                user.subscriptionExpiresAt = newExpiry;
+                user.subscriptionStatus = 'active'; // Ensure status is active after payment
+
+                await user.save({ validateBeforeSave: false });
+                console.log(`User ${user.email} subscription extended manually by ${extensionDurationMonths} month(s). New expiry: ${user.subscriptionExpiresAt}`);
+
+            } else if (paymentPurpose === 'new_subscription') {
+                if (session.subscription) {
+                    const subscription = await stripe.subscriptions.retrieve(session.subscription);
+                    
                     user.stripeSubscriptionId = subscription.id;
                     user.stripeCustomerId = session.customer.toString();
                     user.currentPlanId = plan._id;
                     user.currentPlanType = plan.type;
                     user.subscriptionStatus = subscription.status;
                     user.subscriptionExpiresAt = new Date(subscription.current_period_end * 1000);
-                    
+
                     await user.save({ validateBeforeSave: false });
-                    console.log(`User ${user.email} subscription updated to ${plan.name}.`);
+                    console.log(`User ${user.email} new subscription updated to ${plan.name}. Expiry: ${user.subscriptionExpiresAt}.`);
                 } else {
-                    console.error(`User or Plan not found for checkout.session.completed. UserID: ${userId}, PlanID: ${planId}`);
+                    console.warn(`Checkout session ${session.id} completed for new_subscription but no Stripe subscription attached.`);
                 }
             } else {
-                console.warn(`Checkout session ${session.id} completed but no subscription attached.`);
+                console.warn(`Unhandled paymentPurpose: ${paymentPurpose} for session ${session.id}`);
             }
             break;
 
@@ -165,10 +235,18 @@ const handleStripeWebhook = asyncHandler(async (req, res) => {
                 const user = await User.findOne({ stripeSubscriptionId: subscription.id });
 
                 if (user) {
+                    const stripeCurrentPeriodEnd = new Date(subscription.current_period_end * 1000);
+                    
+                    if (!user.subscriptionExpiresAt || stripeCurrentPeriodEnd > user.subscriptionExpiresAt) {
+                        user.subscriptionExpiresAt = stripeCurrentPeriodEnd;
+                        console.log(`User ${user.email} subscription expiry synced with Stripe's later date: ${user.subscriptionExpiresAt}`);
+                    } else {
+                        console.log(`User ${user.email} subscription expiry (currently ${user.subscriptionExpiresAt}) is already beyond Stripe's new period end (${stripeCurrentPeriodEnd}). No update from invoice.payment_succeeded.`);
+                    }
+
                     user.subscriptionStatus = subscription.status;
-                    user.subscriptionExpiresAt = new Date(subscription.current_period_end * 1000);
                     await user.save({ validateBeforeSave: false });
-                    console.log(`User ${user.email} subscription extended via invoice payment.`);
+                    console.log(`User ${user.email} subscription status confirmed as ${user.subscriptionStatus} via invoice payment.`);
                 } else {
                     console.warn(`User not found for subscription ID ${subscription.id} during invoice.payment_succeeded.`);
                 }
@@ -181,8 +259,10 @@ const handleStripeWebhook = asyncHandler(async (req, res) => {
             const userUpdated = await User.findOne({ stripeSubscriptionId: updatedSubscription.id });
             if (userUpdated) {
                 userUpdated.subscriptionStatus = updatedSubscription.status;
-                userUpdated.subscriptionExpiresAt = new Date(updatedSubscription.current_period_end * 1000);
-
+                
+                const stripeUpdatedPeriodEnd = new Date(updatedSubscription.current_period_end * 1000);
+                userUpdated.subscriptionExpiresAt = stripeUpdatedPeriodEnd;
+                
                 if (updatedSubscription.items.data.length > 0) {
                     const newPriceId = updatedSubscription.items.data[0].price.id;
                     const newPlan = await Plan.findOne({ stripePriceId: newPriceId });
@@ -205,9 +285,17 @@ const handleStripeWebhook = asyncHandler(async (req, res) => {
                 userDeleted.currentPlanId = null;
                 userDeleted.currentPlanType = null;
                 userDeleted.subscriptionStatus = 'canceled';
-                userDeleted.subscriptionExpiresAt = deletedSubscription.current_period_end ? new Date(deletedSubscription.current_period_end * 1000) : new Date();
+
+                const stripeDeletedPeriodEnd = deletedSubscription.current_period_end ? new Date(deletedSubscription.current_period_end * 1000) : new Date();
+                if (!userDeleted.subscriptionExpiresAt || userDeleted.subscriptionExpiresAt < stripeDeletedPeriodEnd) {
+                     userDeleted.subscriptionExpiresAt = stripeDeletedPeriodEnd;
+                     console.log(`User ${userDeleted.email} subscription expiry set to Stripe's period end for deleted sub: ${userDeleted.subscriptionExpiresAt}`);
+                } else {
+                    console.log(`User ${userDeleted.email} subscription expiry (currently ${userDeleted.subscriptionExpiresAt}) is already beyond Stripe's deleted sub period end (${stripeDeletedPeriodEnd}). Preserving existing expiry.`);
+                }
+
                 await userDeleted.save({ validateBeforeSave: false });
-                console.log(`User ${userDeleted.email} subscription marked as canceled.`);
+                console.log(`User ${userDeleted.email} subscription marked as canceled. Access until: ${userDeleted.subscriptionExpiresAt}.`);
             }
             break;
 

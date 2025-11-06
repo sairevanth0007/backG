@@ -39,8 +39,8 @@ router.post('/webhook', paymentController.handleStripeWebhook); // Note: raw bod
  * @swagger
  * /payment/create-checkout-session:
  *   post:
- *     summary: Creates a Stripe Checkout Session.
- *     description: Initiates the process for a user to subscribe to a plan by creating a Stripe Checkout Session URL. The user is redirected to this URL to complete payment.
+ *     summary: Creates a Stripe Checkout Session for new subscription or to extend existing one.
+ *     description: Initiates the process for a user to subscribe to a plan (if new) or extend their current plan (if already active on the same plan type). It generates a Stripe Checkout Session URL, to which the user is redirected to complete payment.
  *     tags:
  *       - Payment
  *     security:
@@ -66,7 +66,7 @@ router.post('/webhook', paymentController.handleStripeWebhook); // Note: raw bod
  *               message: "Stripe Checkout Session created successfully."
  *               success: true
  *       400:
- *         description: Bad request (e.g., missing planId, invalid planId, inactive plan, or user has no Stripe Customer ID).
+ *         description: Bad request (e.g., missing planId, invalid planId, inactive plan).
  *         content:
  *           application/json:
  *             schema:

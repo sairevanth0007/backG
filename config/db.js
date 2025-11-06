@@ -7,7 +7,7 @@
 import mongoose from 'mongoose';
 import { DB_NAME } from '../constants/index.js';
 import { bridge } from '../bridge.js'; // Ensure bridge is imported
-
+import { initializeJobs } from '../jobs/index.js';
 /**
  * @async
  * @function connectDB
@@ -25,6 +25,8 @@ const connectDB = async () => {
         if (bridge.isDevelopment) {
             mongoose.set('debug', true); // Enable Mongoose debug mode in development
         }
+        // Initialize scheduled jobs AFTER DB connection
+        initializeJobs();
     } catch (error) {
         console.error("❌ MongoDB Connection Error:", error);
         process.exit(1); // Exit process with failure

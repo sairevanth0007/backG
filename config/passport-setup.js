@@ -121,39 +121,50 @@ const OAUTH_VERIFY_CALLBACK = async (req, accessToken, refreshToken, profile, do
             newUser.isFreeTrialEligible = false;
 
             // 2. Handle incoming referral code (if any)
-            if (sessionReferralCode) {
-                const referralDoc = await Referral.findOne({ referralCode: sessionReferralCode }).populate('userId');
-                if (referralDoc && referralDoc.userId) {
-                    const referringUser = await User.findById(referralDoc.userId);
+    if (sessionReferralCode) {
+        const referralDoc = await Referral.findOne({ referralCode: sessionReferralCode }).populate('userId');
+        if (referralDoc && referralDoc.userId) {
+            const referringUser = await User.findById(referralDoc.userId);
 
-                    if (referringUser && referringUser._id.toString() !== newUser._id.toString()) {
-                        // --- START OF NEW REFERRAL LIMIT LOGIC ---
-                        if (referralDoc.numberOfReferrals < ReferralConstants.MAX_BONUS_REFERRALS) {
-                            newUser.referredBy = referringUser._id;
+            if (referringUser && referringUser._id.toString() !== newUser._id.toString()) {
+                if (referralDoc.numberOfReferrals < ReferralConstants.MAX_BONUS_REFERRALS) {
+                    newUser.referredBy = referringUser._id;
 
-                            let newExpiry;
-                            if (!referringUser.subscriptionExpiresAt || referringUser.subscriptionExpiresAt < new Date()) {
-                                newExpiry = addMonths(new Date(), ReferralConstants.BONUS_MONTHS);
-                            } else {
-                                newExpiry = addMonths(new Date(referringUser.subscriptionExpiresAt), ReferralConstants.BONUS_MONTHS);
-                            }
-                            referringUser.subscriptionExpiresAt = newExpiry;
-
-                            await referringUser.save();
-
-                            referralDoc.numberOfReferrals += 1;
-                            await referralDoc.save();
-                            console.log(`Referral bonus applied to user ${referringUser.email} from new user ${newUser.email}. Total bonuses for this referrer: ${referralDoc.numberOfReferrals}/${ReferralConstants.MAX_BONUS_REFERRALS}`);
-                        } else {
-                            console.log(`Referral bonus limit reached for user ${referringUser.email} (${referralDoc.numberOfReferrals} bonuses). No bonus applied for new user ${newUser.email}.`);
-                        }
-                        // --- END OF NEW REFERRAL LIMIT LOGIC ---
+                    let newExpiry;
+                    if (!referringUser.subscriptionExpiresAt || referringUser.subscriptionExpiresAt < new Date()) {
+                        newExpiry = addMonths(new Date(), ReferralConstants.BONUS_MONTHS);
+                    } else {
+                        newExpiry = addMonths(new Date(referringUser.subscriptionExpiresAt), ReferralConstants.BONUS_MONTHS);
                     }
+                    referringUser.subscriptionExpiresAt = newExpiry;
+
+                    // --- START OF NEW LOGIC FOR REFERRER'S PLAN TYPE & STATUS ---
+                    // Only change plan type/status if they are NOT on an active paid plan.
+                    // If they are on a FreeTrial or their paid subscription has expired/canceled,
+                    // this bonus grants 'BonusExtension' access.
+                    if (referringUser.subscriptionStatus !== 'active' && referringUser.currentPlanType !== PlanTypes.MONTHLY && referringUser.currentPlanType !== PlanTypes.YEARLY) {
+                        referringUser.currentPlanType = PlanTypes.BONUS_EXTENSION;
+                        // Optionally, update subscriptionStatus to reflect bonus, or keep it null/canceled
+                        // 'active' is misleading if no paid sub. 'BonusExtension' is good for both type and status.
+                        referringUser.subscriptionStatus = PlanTypes.BONUS_EXTENSION;
+                        console.log(`User ${referringUser.email} now on '${PlanTypes.BONUS_EXTENSION}' status due to referral bonus.`);
+                    }
+                    // --- END OF NEW LOGIC ---
+
+                    await referringUser.save();
+
+                    referralDoc.numberOfReferrals += 1;
+                    await referralDoc.save();
+                    console.log(`Referral bonus applied to user ${referringUser.email} from new user ${newUser.email}. Total bonuses for this referrer: ${referralDoc.numberOfReferrals}/${ReferralConstants.MAX_BONUS_REFERRALS}`);
                 } else {
-                     console.warn(`Invalid or non-existent referral code used: ${sessionReferralCode}`);
+                    console.log(`Referral bonus limit reached for user ${referringUser.email} (${referralDoc.numberOfReferrals} bonuses). No bonus applied for new user ${newUser.email}.`);
                 }
             }
-            await newUser.save();
+        } else {
+            console.warn(`Invalid or non-existent referral code used: ${sessionReferralCode}`);
+        }
+    }
+    await newUser.save();
 
             // 3. Generate user's own referral code
             try {

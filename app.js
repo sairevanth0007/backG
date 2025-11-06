@@ -63,7 +63,7 @@ app.use(session({
     resave: false, // Don't save session if unmodified
     saveUninitialized: false, // Don't create session until something stored
     cookie: {
-        secure: bridge.isProduction, // True if HTTPS, false for HTTP (development)
+        secure: process.env.NGROK_URL ? true : bridge.isProduction, // True if HTTPS, false for HTTP (development)
         httpOnly: true, // Prevent client-side JS from reading the cookie
         maxAge: 24 * 60 * 60 * 1000 // 1 day (optional, can be shorter or longer)
     }

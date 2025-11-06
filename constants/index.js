@@ -85,6 +85,7 @@ export const PlanTypes = Object.freeze({
     MONTHLY: 'Monthly',
     YEARLY: 'Yearly',
     FREE_TRIAL: 'FreeTrial',
+    BONUS_EXTENSION: 'BonusExtension', 
 });
 
 /**
