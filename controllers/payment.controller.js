@@ -13,6 +13,7 @@ import { User } from '../models/user.model.js';
 import { Plan } from '../models/plan.model.js';
 import { bridge } from '../bridge.js';
 
+
 // Helper function to add duration to a date (already in passport-setup, but good to have here too)
 function addDays(date, days) {
     const result = new Date(date);
@@ -41,7 +42,7 @@ function addMonths(date, months) {
  * @returns {ApiError.model} 500 - Internal server error.
  */
 const createCheckoutSession = asyncHandler(async (req, res, next) => {
-    const { planId } = req.body;
+    const { planId, quantity = 1 } = req.body;
     const userId = req.user._id;
 
     if (!planId) {
@@ -168,135 +169,19 @@ const handleStripeWebhook = asyncHandler(async (req, res) => {
     // Handle the event
     switch (event.type) {
         case 'checkout.session.completed':
-            const session = event.data.object;
-            console.log(`✅ Checkout Session Completed: ${session.id}`);
-
-            const userId = session.metadata.userId;
-            const planId = session.metadata.planId;
-            const paymentPurpose = session.metadata.paymentPurpose;
-            const purchasedPlanType = session.metadata.planType; // <-- Retrieve the planType from metadata
-
-            const user = await User.findById(userId);
-            const plan = await Plan.findById(planId);
-
-            if (!user || !plan) {
-                console.error(`User or Plan not found for checkout.session.completed. UserID: ${userId}, PlanID: ${planId}`);
-                return res.status(HttpStatusCode.OK).send('User or Plan not found, but acknowledged.');
-            }
-
-            if (paymentPurpose === 'extension') {
-                console.log(`Processing extension payment for user ${user.email} (session: ${session.id}).`);
-                
-                // --- START OF DYNAMIC EXTENSION DURATION ---
-                let extensionDurationMonths = 1; // Default to 1 month
-                if (purchasedPlanType === PlanTypes.YEARLY) {
-                    extensionDurationMonths = 12; // If yearly plan was purchased for extension
-                }
-                // --- END OF DYNAMIC EXTENSION DURATION ---
-
-                let newExpiry;
-                if (!user.subscriptionExpiresAt || user.subscriptionExpiresAt < new Date()) {
-                    newExpiry = addMonths(new Date(), extensionDurationMonths);
-                } else {
-                    newExpiry = addMonths(new Date(user.subscriptionExpiresAt), extensionDurationMonths);
-                }
-                user.subscriptionExpiresAt = newExpiry;
-                user.subscriptionStatus = 'active'; // Ensure status is active after payment
-
-                await user.save({ validateBeforeSave: false });
-                console.log(`User ${user.email} subscription extended manually by ${extensionDurationMonths} month(s). New expiry: ${user.subscriptionExpiresAt}`);
-
-            } else if (paymentPurpose === 'new_subscription') {
-                if (session.subscription) {
-                    const subscription = await stripe.subscriptions.retrieve(session.subscription);
-                    
-                    user.stripeSubscriptionId = subscription.id;
-                    user.stripeCustomerId = session.customer.toString();
-                    user.currentPlanId = plan._id;
-                    user.currentPlanType = plan.type;
-                    user.subscriptionStatus = subscription.status;
-                    user.subscriptionExpiresAt = new Date(subscription.current_period_end * 1000);
-
-                    await user.save({ validateBeforeSave: false });
-                    console.log(`User ${user.email} new subscription updated to ${plan.name}. Expiry: ${user.subscriptionExpiresAt}.`);
-                } else {
-                    console.warn(`Checkout session ${session.id} completed for new_subscription but no Stripe subscription attached.`);
-                }
-            } else {
-                console.warn(`Unhandled paymentPurpose: ${paymentPurpose} for session ${session.id}`);
-            }
+            await handleCheckoutSessionCompleted(event.data.object);
             break;
 
         case 'invoice.payment_succeeded':
-            const invoice = event.data.object;
-            console.log(`💰 Invoice Payment Succeeded: ${invoice.id}`);
-            if (invoice.subscription) {
-                const subscription = await stripe.subscriptions.retrieve(invoice.subscription);
-                const user = await User.findOne({ stripeSubscriptionId: subscription.id });
-
-                if (user) {
-                    const stripeCurrentPeriodEnd = new Date(subscription.current_period_end * 1000);
-                    
-                    if (!user.subscriptionExpiresAt || stripeCurrentPeriodEnd > user.subscriptionExpiresAt) {
-                        user.subscriptionExpiresAt = stripeCurrentPeriodEnd;
-                        console.log(`User ${user.email} subscription expiry synced with Stripe's later date: ${user.subscriptionExpiresAt}`);
-                    } else {
-                        console.log(`User ${user.email} subscription expiry (currently ${user.subscriptionExpiresAt}) is already beyond Stripe's new period end (${stripeCurrentPeriodEnd}). No update from invoice.payment_succeeded.`);
-                    }
-
-                    user.subscriptionStatus = subscription.status;
-                    await user.save({ validateBeforeSave: false });
-                    console.log(`User ${user.email} subscription status confirmed as ${user.subscriptionStatus} via invoice payment.`);
-                } else {
-                    console.warn(`User not found for subscription ID ${subscription.id} during invoice.payment_succeeded.`);
-                }
-            }
+            await handleInvoicePaymentSucceeded(event.data.object);
             break;
 
         case 'customer.subscription.updated':
-            const updatedSubscription = event.data.object;
-            console.log(`🔄 Subscription Updated: ${updatedSubscription.id}`);
-            const userUpdated = await User.findOne({ stripeSubscriptionId: updatedSubscription.id });
-            if (userUpdated) {
-                userUpdated.subscriptionStatus = updatedSubscription.status;
-                
-                const stripeUpdatedPeriodEnd = new Date(updatedSubscription.current_period_end * 1000);
-                userUpdated.subscriptionExpiresAt = stripeUpdatedPeriodEnd;
-                
-                if (updatedSubscription.items.data.length > 0) {
-                    const newPriceId = updatedSubscription.items.data[0].price.id;
-                    const newPlan = await Plan.findOne({ stripePriceId: newPriceId });
-                    if (newPlan) {
-                        userUpdated.currentPlanId = newPlan._id;
-                        userUpdated.currentPlanType = newPlan.type;
-                    }
-                }
-                await userUpdated.save({ validateBeforeSave: false });
-                console.log(`User ${userUpdated.email} subscription details updated (status: ${userUpdated.subscriptionStatus}, expires: ${userUpdated.subscriptionExpiresAt}).`);
-            }
+            await handleSubscriptionUpdated(event.data.object);
             break;
 
         case 'customer.subscription.deleted':
-            const deletedSubscription = event.data.object;
-            console.log(`🗑️ Subscription Deleted: ${deletedSubscription.id}`);
-            const userDeleted = await User.findOne({ stripeSubscriptionId: deletedSubscription.id });
-            if (userDeleted) {
-                userDeleted.stripeSubscriptionId = null;
-                userDeleted.currentPlanId = null;
-                userDeleted.currentPlanType = null;
-                userDeleted.subscriptionStatus = 'canceled';
-
-                const stripeDeletedPeriodEnd = deletedSubscription.current_period_end ? new Date(deletedSubscription.current_period_end * 1000) : new Date();
-                if (!userDeleted.subscriptionExpiresAt || userDeleted.subscriptionExpiresAt < stripeDeletedPeriodEnd) {
-                     userDeleted.subscriptionExpiresAt = stripeDeletedPeriodEnd;
-                     console.log(`User ${userDeleted.email} subscription expiry set to Stripe's period end for deleted sub: ${userDeleted.subscriptionExpiresAt}`);
-                } else {
-                    console.log(`User ${userDeleted.email} subscription expiry (currently ${userDeleted.subscriptionExpiresAt}) is already beyond Stripe's deleted sub period end (${stripeDeletedPeriodEnd}). Preserving existing expiry.`);
-                }
-
-                await userDeleted.save({ validateBeforeSave: false });
-                console.log(`User ${userDeleted.email} subscription marked as canceled. Access until: ${userDeleted.subscriptionExpiresAt}.`);
-            }
+            await handleSubscriptionDeleted(event.data.object);
             break;
 
         default:
@@ -305,6 +190,294 @@ const handleStripeWebhook = asyncHandler(async (req, res) => {
 
     res.status(HttpStatusCode.OK).send('Webhook Received');
 });
+
+/**
+ * Handle checkout.session.completed
+ */
+async function handleCheckoutSessionCompleted(session) {
+    console.log(`✅ Checkout Session Completed: ${session.id}`);
+
+    const userId = session.metadata.userId;
+    const planId = session.metadata.planId;
+    const paymentPurpose = session.metadata.paymentPurpose;
+    const purchasedPlanType = session.metadata.planType;
+
+    const user = await User.findById(userId);
+    const plan = await Plan.findById(planId);
+
+    if (!user || !plan) {
+        console.error(`User or Plan not found. UserID: ${userId}, PlanID: ${planId}`);
+        return;
+    }
+
+    // Handle team subscription
+    if (paymentPurpose === 'team_subscription') {
+        const seats = parseInt(session.metadata.seats);
+        
+        if (!session.subscription) {
+            console.warn(`Team checkout session ${session.id} has no subscription attached.`);
+            return;
+        }
+
+        const subscription = await stripe.subscriptions.retrieve(session.subscription);
+        
+        // Create team subscription record
+        const teamSub = new TeamSubscription({
+            ownerId: user._id,
+            planId: plan._id,
+            stripeSubscriptionId: subscription.id,
+            stripePriceId: plan.stripePriceId,
+            totalSeats: seats,
+            usedSeats: 1, // Owner counts as 1 seat
+            subscriptionStatus: subscription.status,
+            currentPeriodStart: new Date(subscription.current_period_start * 1000),
+            currentPeriodEnd: new Date(subscription.current_period_end * 1000),
+            cancelAtPeriodEnd: subscription.cancel_at_period_end,
+        });
+        await teamSub.save();
+
+        // Update user
+        user.stripeCustomerId = session.customer.toString();
+        user.isTeamOwner = true;
+        user.ownedTeamSubscription = teamSub._id;
+        await user.save({ validateBeforeSave: false });
+
+        console.log(`Team subscription created for ${user.email} with ${seats} seats.`);
+        return;
+    }
+
+    // Handle extension payment
+    if (paymentPurpose === 'extension') {
+        let extensionDurationMonths = 1;
+        if (purchasedPlanType === PlanTypes.YEARLY) {
+            extensionDurationMonths = 12;
+        }
+
+        let newExpiry;
+        if (!user.subscriptionExpiresAt || user.subscriptionExpiresAt < new Date()) {
+            newExpiry = addMonths(new Date(), extensionDurationMonths);
+        } else {
+            newExpiry = addMonths(new Date(user.subscriptionExpiresAt), extensionDurationMonths);
+        }
+        
+        user.subscriptionExpiresAt = newExpiry;
+        user.subscriptionStatus = 'active';
+        await user.save({ validateBeforeSave: false });
+        
+        console.log(`User ${user.email} subscription extended by ${extensionDurationMonths} months.`);
+        return;
+    }
+
+    // Handle new personal subscription
+    if (paymentPurpose === 'new_subscription') {
+        if (session.subscription) {
+            const subscription = await stripe.subscriptions.retrieve(session.subscription);
+            
+            user.stripeSubscriptionId = subscription.id;
+            user.stripeCustomerId = session.customer.toString();
+            user.currentPlanId = plan._id;
+            user.currentPlanType = plan.type;
+            user.subscriptionStatus = subscription.status;
+            user.subscriptionExpiresAt = new Date(subscription.current_period_end * 1000);
+            await user.save({ validateBeforeSave: false });
+            
+            console.log(`User ${user.email} new subscription: ${plan.name}`);
+        }
+    }
+}
+
+/**
+ * Handle invoice.payment_succeeded
+ */
+async function handleInvoicePaymentSucceeded(invoice) {
+    console.log(`💰 Invoice Payment Succeeded: ${invoice.id}`);
+    
+    if (!invoice.subscription) {
+        console.log('Invoice has no subscription attached.');
+        return;
+    }
+
+    const subscription = await stripe.subscriptions.retrieve(invoice.subscription);
+    
+    // Check if it's a team subscription
+    const teamSub = await TeamSubscription.findOne({ stripeSubscriptionId: subscription.id });
+    
+    if (teamSub) {
+        // Handle team subscription renewal
+        const newPeriodEnd = new Date(subscription.current_period_end * 1000);
+        
+        teamSub.subscriptionStatus = subscription.status;
+        teamSub.currentPeriodStart = new Date(subscription.current_period_start * 1000);
+        teamSub.currentPeriodEnd = newPeriodEnd;
+        teamSub.cancelAtPeriodEnd = subscription.cancel_at_period_end;
+        
+        // Clean up pending_removal members
+        await TeamMember.updateMany(
+            {
+                teamSubscriptionId: teamSub._id,
+                status: 'pending_removal',
+                accessExpiresAt: { $lt: newPeriodEnd }
+            },
+            {
+                status: 'removed'
+            }
+        );
+        
+        // Recalculate used seats (count active members + 1 for owner)
+        const activeMembers = await TeamMember.countDocuments({
+            teamSubscriptionId: teamSub._id,
+            status: 'active'
+        });
+        teamSub.usedSeats = activeMembers + 1; // +1 for owner
+        
+        await teamSub.save();
+        
+        // Update extended expiry for team members
+        const members = await TeamMember.find({
+            teamSubscriptionId: teamSub._id,
+            status: 'active'
+        });
+        
+        for (const member of members) {
+            const memberUser = await User.findById(member.userId);
+            if (memberUser && memberUser.extendedExpiryFromPersonalPlan) {
+                // Check if extended expiry is within this period
+                if (memberUser.extendedExpiryFromPersonalPlan <= newPeriodEnd) {
+                    memberUser.extendedExpiryFromPersonalPlan = null;
+                    await memberUser.save({ validateBeforeSave: false });
+                }
+            }
+        }
+        
+        console.log(`Team subscription ${teamSub._id} renewed. Period end: ${newPeriodEnd}`);
+        return;
+    }
+    
+    // Handle personal subscription renewal
+    const user = await User.findOne({ stripeSubscriptionId: subscription.id });
+    if (user) {
+        const stripeCurrentPeriodEnd = new Date(subscription.current_period_end * 1000);
+        
+        if (!user.subscriptionExpiresAt || stripeCurrentPeriodEnd > user.subscriptionExpiresAt) {
+            user.subscriptionExpiresAt = stripeCurrentPeriodEnd;
+        }
+        
+        user.subscriptionStatus = subscription.status;
+        await user.save({ validateBeforeSave: false });
+        
+        console.log(`User ${user.email} subscription renewed via invoice payment.`);
+    }
+}
+
+/**
+ * Handle customer.subscription.updated
+ */
+async function handleSubscriptionUpdated(updatedSubscription) {
+    console.log(`🔄 Subscription Updated: ${updatedSubscription.id}`);
+    
+    // Check if it's a team subscription
+    const teamSub = await TeamSubscription.findOne({ 
+        stripeSubscriptionId: updatedSubscription.id 
+    });
+    
+    if (teamSub) {
+        teamSub.subscriptionStatus = updatedSubscription.status;
+        teamSub.currentPeriodStart = new Date(updatedSubscription.current_period_start * 1000);
+        teamSub.currentPeriodEnd = new Date(updatedSubscription.current_period_end * 1000);
+        teamSub.cancelAtPeriodEnd = updatedSubscription.cancel_at_period_end;
+        
+        // Check if quantity changed
+        if (updatedSubscription.items.data.length > 0) {
+            const newQuantity = updatedSubscription.items.data[0].quantity;
+            if (newQuantity !== teamSub.totalSeats) {
+                console.log(`Team seats updated from ${teamSub.totalSeats} to ${newQuantity}`);
+                teamSub.totalSeats = newQuantity;
+            }
+        }
+        
+        await teamSub.save();
+        console.log(`Team subscription ${teamSub._id} updated.`);
+        return;
+    }
+    
+    // Handle personal subscription update
+    const userUpdated = await User.findOne({ stripeSubscriptionId: updatedSubscription.id });
+    if (userUpdated) {
+        userUpdated.subscriptionStatus = updatedSubscription.status;
+        userUpdated.subscriptionExpiresAt = new Date(updatedSubscription.current_period_end * 1000);
+        
+        if (updatedSubscription.items.data.length > 0) {
+            const newPriceId = updatedSubscription.items.data[0].price.id;
+            const newPlan = await Plan.findOne({ stripePriceId: newPriceId });
+            if (newPlan) {
+                userUpdated.currentPlanId = newPlan._id;
+                userUpdated.currentPlanType = newPlan.type;
+            }
+        }
+        
+        await userUpdated.save({ validateBeforeSave: false });
+        console.log(`User ${userUpdated.email} subscription updated.`);
+    }
+}
+
+/**
+ * Handle customer.subscription.deleted
+ */
+async function handleSubscriptionDeleted(deletedSubscription) {
+    console.log(`🗑️ Subscription Deleted: ${deletedSubscription.id}`);
+    
+    // Check if it's a team subscription
+    const teamSub = await TeamSubscription.findOne({ 
+        stripeSubscriptionId: deletedSubscription.id 
+    });
+    
+    if (teamSub) {
+        const periodEnd = deletedSubscription.current_period_end 
+            ? new Date(deletedSubscription.current_period_end * 1000) 
+            : new Date();
+        
+        teamSub.subscriptionStatus = 'canceled';
+        teamSub.cancelAtPeriodEnd = true;
+        
+        // Members retain access until period end
+        await TeamMember.updateMany(
+            {
+                teamSubscriptionId: teamSub._id,
+                status: 'active'
+            },
+            {
+                accessExpiresAt: periodEnd
+            }
+        );
+        
+        await teamSub.save();
+        
+        console.log(`Team subscription ${teamSub._id} canceled. Access until: ${periodEnd}`);
+        return;
+    }
+    
+    // Handle personal subscription deletion
+    const userDeleted = await User.findOne({ stripeSubscriptionId: deletedSubscription.id });
+    if (userDeleted) {
+        userDeleted.stripeSubscriptionId = null;
+        userDeleted.currentPlanId = null;
+        userDeleted.currentPlanType = null;
+        userDeleted.subscriptionStatus = 'canceled';
+        
+        const stripePeriodEnd = deletedSubscription.current_period_end 
+            ? new Date(deletedSubscription.current_period_end * 1000) 
+            : new Date();
+        
+        if (!userDeleted.subscriptionExpiresAt || userDeleted.subscriptionExpiresAt < stripePeriodEnd) {
+            userDeleted.subscriptionExpiresAt = stripePeriodEnd;
+        }
+        
+        await userDeleted.save({ validateBeforeSave: false });
+        console.log(`User ${userDeleted.email} subscription canceled. Access until: ${stripePeriodEnd}`);
+    }
+}
+
+
 
 
 /**

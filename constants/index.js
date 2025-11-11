@@ -86,6 +86,41 @@ export const PlanTypes = Object.freeze({
     YEARLY: 'Yearly',
     FREE_TRIAL: 'FreeTrial',
     BONUS_EXTENSION: 'BonusExtension', 
+    SMALL_BUSINESS: 'SmallBusiness',
+});
+
+/**
+ * @constant {object} TeamLimits
+ * @description Team subscription limits.
+ * @readonly
+ */
+export const TeamLimits = Object.freeze({
+    MIN_SEATS: 1,
+    MAX_SEATS: 20,
+});
+
+/**
+ * @constant {object} TeamMemberStatus
+ * @description Status types for team members.
+ * @readonly
+ * @enum {string}
+ */
+export const TeamMemberStatus = Object.freeze({
+    ACTIVE: 'active',
+    REMOVED: 'removed',
+    PENDING_REMOVAL: 'pending_removal',
+});
+
+/**
+ * @constant {object} SubscriptionType
+ * @description Types of subscription access.
+ * @readonly
+ * @enum {string}
+ */
+export const SubscriptionType = Object.freeze({
+    PERSONAL: 'personal',
+    TEAM_OWNER: 'team_owner',
+    TEAM_MEMBER: 'team_member',
 });
 
 /**
@@ -99,7 +134,11 @@ export const UserRoles = Object.freeze({
     ADMIN: 'admin', // If you plan to have admin roles
 });
 
-// ADD THIS NEW CONSTANT FOR REFERRAL LIMITS
+/**
+ * @constant {object} ReferralConstants
+ * @description Referral system configuration.
+ * @readonly
+ */
 export const ReferralConstants = Object.freeze({
     MAX_BONUS_REFERRALS: 20, // Referrer gets bonus only for the first 20 referrals
     BONUS_MONTHS: 1,         // Number of months to add per referral

@@ -19,6 +19,7 @@ const MONGODB_URI = process.env.MONGODB_URI;
  */
 const MONTHLY_PRICE_ID = process.env.STRIPE_MONTHLY_PLAN_PRICE_ID || 'price_replace_with_your_monthly_id';
 const YEARLY_PRICE_ID = process.env.STRIPE_YEARLY_PLAN_PRICE_ID || 'price_replace_with_your_yearly_id';
+const TEAM_MONTHLY_PRICE_ID = process.env.STRIPE_TEAM_MONTHLY_PLAN_PRICE_ID || 'price_replace_with_your_monthly_id';
 
 const plansToSeed = [
     {
@@ -39,6 +40,16 @@ const plansToSeed = [
         stripePriceId: YEARLY_PRICE_ID,
         features: ['Access to all features', 'Priority email support', 'Exclusive content'],
         description: 'Save money with our yearly plan, granting full access.',
+        isActive: true,
+    },
+    {
+        name: 'Team Monthly',
+        type: PlanTypes.SMALL_BUSINESS,
+        price: 1000, // $10.00 in cents
+        currency: 'usd',
+        stripePriceId: TEAM_MONTHLY_PRICE_ID,
+        features: ['Access to basic features', 'Email support'],
+        description: 'Our most affordable monthly plan for essential features.',
         isActive: true,
     },
 ];

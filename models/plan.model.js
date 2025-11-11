@@ -65,6 +65,11 @@ const planSchema = new Schema(
             type: Boolean,
             default: true,
         },
+         billingScheme: { // <-- NEW FIELD
+            type: String,
+            enum: ['flat', 'per_unit'],
+            default: 'flat', // Default to your existing model
+        },
     },
     { timestamps: true }
 );

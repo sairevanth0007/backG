@@ -23,6 +23,7 @@ import paymentRoutes from './routes/payment.routes.js';
 import swaggerUi from 'swagger-ui-express';
 import swaggerJsdoc from 'swagger-jsdoc';
 import swaggerOptions from './config/swagger.js';
+import teamRoutes from './routes/team.routes.js';
 // Load environment variables
 dotenv.config({
     path: './.env' // Explicitly point to .env if it's not automatically picked up
@@ -112,7 +113,7 @@ app.get('/api/v1/health', (req, res) => {
 });
 
 app.use('/api/v1/payment/webhook', express.raw({ type: 'application/json' }));
-
+app.use('/api/v1/team', teamRoutes);
 // --- Global Error Handler ---
 // This must be the last middleware
 app.use(errorHandler);

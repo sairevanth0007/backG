@@ -68,6 +68,38 @@ const userSchema = new Schema(
             ref: 'User',
             default: null,
         },
+        isTeamOwner: {
+        type: Boolean,
+        default: false,
+    },
+    ownedTeamSubscription: {
+        type: Schema.Types.ObjectId,
+        ref: 'TeamSubscription',
+        default: null,
+    },
+    
+    // Team Member Fields
+    isTeamMember: {
+        type: Boolean,
+        default: false,
+    },
+    teamMembership: {
+        type: Schema.Types.ObjectId,
+        ref: 'TeamMember',
+        default: null,
+    },
+    
+    // Extended expiry from personal plan when joining team
+    extendedExpiryFromPersonalPlan: {
+        type: Date,
+        default: null,
+    },
+    
+    // Track if user's personal subscription was canceled due to team join
+    personalPlanCanceledForTeam: {
+        type: Boolean,
+        default: false,
+    },
         referralDetails: { // Link to this user's own referral code document
             type: Schema.Types.ObjectId,
             ref: 'Referral',
@@ -179,5 +211,111 @@ userSchema.methods.generateRefreshToken = function () {
         }
     );
 };
+
+userSchema.methods.hasActiveAccess = async function() {
+    const now = new Date();
+    
+    // Check personal subscription
+    if (this.subscriptionStatus === 'active' && this.subscriptionExpiresAt > now) {
+        return true;
+    }
+    
+    // Check team membership
+    if (this.isTeamMember && this.teamMembership) {
+        const TeamMember = mongoose.model('TeamMember');
+        const membership = await TeamMember.findById(this.teamMembership)
+            .populate('teamSubscriptionId');
+        
+        if (membership && 
+            membership.status === 'active' && 
+            membership.teamSubscriptionId.subscriptionStatus === 'active' &&
+            membership.teamSubscriptionId.currentPeriodEnd > now) {
+            return true;
+        }
+    }
+    
+    // Check extended expiry from personal plan
+    if (this.extendedExpiryFromPersonalPlan && this.extendedExpiryFromPersonalPlan > now) {
+        return true;
+    }
+    
+    // Check team ownership
+    if (this.isTeamOwner && this.ownedTeamSubscription) {
+        const TeamSubscription = mongoose.model('TeamSubscription');
+        const teamSub = await TeamSubscription.findById(this.ownedTeamSubscription);
+        
+        if (teamSub && 
+            teamSub.subscriptionStatus === 'active' && 
+            teamSub.currentPeriodEnd > now) {
+            return true;
+        }
+    }
+    
+    return false;
+};
+
+/**
+ * ADD THIS METHOD TO YOUR USER MODEL
+ * Get user's effective subscription details (personal or team)
+ */
+userSchema.methods.getEffectiveSubscription = async function() {
+    const now = new Date();
+    
+    // Priority 1: Team Owner
+    if (this.isTeamOwner && this.ownedTeamSubscription) {
+        const TeamSubscription = mongoose.model('TeamSubscription');
+        const teamSub = await TeamSubscription.findById(this.ownedTeamSubscription)
+            .populate('planId');
+        
+        if (teamSub && teamSub.subscriptionStatus === 'active' && teamSub.currentPeriodEnd > now) {
+            return {
+                type: 'team_owner',
+                subscription: teamSub,
+                expiresAt: teamSub.currentPeriodEnd,
+                planName: teamSub.planId.name,
+                seats: `${teamSub.usedSeats}/${teamSub.totalSeats}`,
+            };
+        }
+    }
+    
+    // Priority 2: Personal Subscription
+    if (this.subscriptionStatus === 'active' && this.subscriptionExpiresAt > now) {
+        return {
+            type: 'personal',
+            subscription: {
+                planId: this.currentPlanId,
+                status: this.subscriptionStatus,
+            },
+            expiresAt: this.subscriptionExpiresAt,
+            planName: this.currentPlanType,
+        };
+    }
+    
+    // Priority 3: Team Member
+    if (this.isTeamMember && this.teamMembership) {
+        const TeamMember = mongoose.model('TeamMember');
+        const membership = await TeamMember.findById(this.teamMembership)
+            .populate({
+                path: 'teamSubscriptionId',
+                populate: { path: 'planId ownerId' }
+            });
+        
+        if (membership && 
+            membership.status === 'active' && 
+            membership.teamSubscriptionId.subscriptionStatus === 'active' &&
+            membership.teamSubscriptionId.currentPeriodEnd > now) {
+            return {
+                type: 'team_member',
+                subscription: membership.teamSubscriptionId,
+                expiresAt: this.extendedExpiryFromPersonalPlan || membership.teamSubscriptionId.currentPeriodEnd,
+                planName: membership.teamSubscriptionId.planId.name,
+                ownerEmail: membership.teamSubscriptionId.ownerId.email,
+            };
+        }
+    }
+    
+    return null;
+};
+
 
 export const User = mongoose.model('User', userSchema);
